@@ -10,7 +10,7 @@ const roomConnections = new Map(); // roomCode -> Set of usernames
 function initWebSocket(server) {
   const wss = new WebSocket.Server({ 
     server,
-    path: '/ws' // Add explicit path
+    path: '/ws'
   });
 
   wss.on('connection', (ws, req) => {
@@ -72,11 +72,9 @@ function initWebSocket(server) {
     ws.on('close', () => {
       console.log('🔌 WebSocket disconnected:', currentUsername);
       
-      // Clean up using stored username
       if (currentUsername) {
         clients.delete(currentUsername);
         
-        // Remove from room connections
         if (currentRoomCode) {
           const users = roomConnections.get(currentRoomCode);
           if (users) {
@@ -85,7 +83,6 @@ function initWebSocket(server) {
               roomConnections.delete(currentRoomCode);
             }
             
-            // Notify others in room
             broadcastToRoom(currentRoomCode, {
               type: 'PLAYER_LEFT',
               payload: { username: currentUsername }
@@ -206,7 +203,6 @@ async function handleLeaveRoom(ws, payload) {
 
     console.log(`👋 ${username} leaving room ${roomCode}`);
     
-    // Remove from connections
     const users = roomConnections.get(roomCode);
     if (users) {
       users.delete(username);
@@ -215,7 +211,6 @@ async function handleLeaveRoom(ws, payload) {
       }
     }
     
-    // Notify others
     broadcastToRoom(roomCode, {
       type: 'PLAYER_LEFT',
       payload: { username }
@@ -238,23 +233,36 @@ async function handleStartGame(ws, payload) {
     }
 
     // Initialize game based on type
+    let gameState;
     if (gameType === 'scribble') {
-      const gameState = initScribbleGame(room.players.map(p => p.username));
+      gameState = initScribbleGame(room.players.map(p => p.username));
       room.gameState = gameState;
       room.currentGame = 'scribble';
+      console.log('✅ Scribble game state created:', JSON.stringify(gameState, null, 2));
     } else if (gameType === 'uno') {
-      const gameState = initUNOGame(room.players.map(p => p.username));
+      gameState = initUNOGame(room.players.map(p => p.username));
       room.gameState = gameState;
       room.currentGame = 'uno';
+      console.log('✅ UNO game state created:', JSON.stringify(gameState, null, 2));
     }
 
     await room.save();
-
-    // Broadcast game start
-    broadcastToRoom(roomCode, {
+    
+    // Important: Use the gameState variable, not room.gameState
+    // MongoDB might not serialize it properly immediately
+    const gameStartPayload = {
       type: 'GAME_STARTED',
-      payload: { gameType, gameState: room.gameState }
-    });
+      payload: { 
+        gameType, 
+        gameState: gameState // Use the direct variable
+      }
+    };
+
+    console.log(`📢 Broadcasting game start to room ${roomCode}`);
+    console.log(`📦 Payload:`, JSON.stringify(gameStartPayload, null, 2));
+
+    // Broadcast game start to ALL users in the room
+    broadcastToRoom(roomCode, gameStartPayload);
 
     console.log(`✅ Game started in room ${roomCode}: ${gameType}`);
   } catch (error) {

@@ -1,333 +1,326 @@
 import { useState, useEffect, useRef } from 'react';
 import { useWebSocket } from '../context/WebSocketContext';
 
-export default function ScribbleGame({ roomCode, username, gameState: initialGameState, onLeave }) {
-  const { send, on, off } = useWebSocket();
-  const canvasRef = useRef(null);
+export default function ScribbleGame({ roomCode, username, players, onLeaveRoom }) {
+  const [gameState, setGameState] = useState(null);
   const [isDrawing, setIsDrawing] = useState(false);
-  const [currentDrawer, setCurrentDrawer] = useState(initialGameState.currentDrawer);
-  const [myWord, setMyWord] = useState('');
-  const [wordLength, setWordLength] = useState(initialGameState.wordLength);
-  const [roundNumber, setRoundNumber] = useState(initialGameState.roundNumber);
-  const [guessedPlayers, setGuessedPlayers] = useState(initialGameState.guessedPlayers || []);
+  const canvasRef = useRef(null);
+  const [guess, setGuess] = useState('');
   const [chatMessages, setChatMessages] = useState([]);
-  const [messageInput, setMessageInput] = useState('');
-  const [gameOver, setGameOver] = useState(false);
-  const [finalScores, setFinalScores] = useState([]);
-  const chatEndRef = useRef(null);
-
-  const isDrawer = currentDrawer === username;
+  const { sendMessage, on } = useWebSocket();
 
   useEffect(() => {
-    const canvas = canvasRef.current;
-    if (canvas) {
-      const ctx = canvas.getContext('2d');
-      ctx.fillStyle = 'white';
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
-    }
-
-    const cleanupYourWord = on('YOUR_WORD', (payload) => {
-      setMyWord(payload.word);
+    console.log('🎨 ScribbleGame mounted for room:', roomCode, 'user:', username);
+    
+    // Listen for game updates
+    const unsubscribeGameStarted = on('GAME_STARTED', (payload) => {
+      console.log('🎨 Scribble Game started:', payload);
+      console.log('🎨 Game state received:', JSON.stringify(payload.gameState, null, 2));
+      
+      if (payload.gameState) {
+        setGameState(payload.gameState);
+        console.log('✅ Game state set successfully');
+      } else {
+        console.error('❌ No game state in payload!');
+      }
     });
 
-    const cleanupDrawLine = on('DRAW_LINE', (payload) => {
-      drawLineFromData(payload.line);
+    const unsubscribeDrawLine = on('DRAW_LINE', (payload) => {
+      if (canvasRef.current) {
+        drawLineOnCanvas(payload.line);
+      }
     });
 
-    const cleanupClearCanvas = on('CLEAR_CANVAS', () => {
+    const unsubscribeClearCanvas = on('CLEAR_CANVAS', () => {
       clearCanvas();
     });
 
-    const cleanupChatMessage = on('CHAT_MESSAGE', (payload) => {
-      setChatMessages(prev => [...prev, payload]);
+    const unsubscribeChatMessage = on('CHAT_MESSAGE', (payload) => {
+      setChatMessages(prev => [...prev, { username: payload.username, message: payload.message }]);
     });
 
-    const cleanupCorrectGuess = on('CORRECT_GUESS', (payload) => {
-      setChatMessages(prev => [...prev, {
-        username: 'System',
-        message: `${payload.username} guessed correctly! Word was: ${payload.word}`,
-        timestamp: Date.now()
+    const unsubscribeCorrectGuess = on('CORRECT_GUESS', (payload) => {
+      setChatMessages(prev => [...prev, { 
+        username: 'System', 
+        message: `${payload.username} guessed the word!`,
+        isSystem: true 
       }]);
-      setGuessedPlayers(payload.guessedPlayers);
+      setGameState(payload.gameState);
     });
 
-    const cleanupRoundComplete = on('ROUND_COMPLETE', (payload) => {
-      setChatMessages(prev => [...prev, {
-        username: 'System',
-        message: `Round complete! The word was: ${payload.word}`,
-        timestamp: Date.now()
-      }]);
-    });
-
-    const cleanupNextRound = on('NEXT_ROUND', (payload) => {
-      setCurrentDrawer(payload.currentDrawer);
-      setWordLength(payload.wordLength);
-      setRoundNumber(payload.roundNumber);
-      setGuessedPlayers([]);
-      setMyWord('');
+    const unsubscribeNextRound = on('NEXT_ROUND', (payload) => {
+      setGameState(payload.gameState);
       clearCanvas();
-      setChatMessages(prev => [...prev, {
-        username: 'System',
-        message: `Round ${payload.roundNumber} - ${payload.currentDrawer} is now drawing!`,
-        timestamp: Date.now()
-      }]);
+      setChatMessages([]);
     });
 
-    const cleanupGameOver = on('GAME_OVER', (payload) => {
-      setGameOver(true);
-      setFinalScores(payload.finalScores);
+    const unsubscribeGameOver = on('GAME_OVER', (payload) => {
+      alert(`Game Over! ${payload.winner} wins with ${payload.finalScores[payload.winner]} points!`);
     });
 
     return () => {
-      cleanupYourWord();
-      cleanupDrawLine();
-      cleanupClearCanvas();
-      cleanupChatMessage();
-      cleanupCorrectGuess();
-      cleanupRoundComplete();
-      cleanupNextRound();
-      cleanupGameOver();
+      console.log('🧹 Cleaning up ScribbleGame');
+      unsubscribeGameStarted();
+      unsubscribeDrawLine();
+      unsubscribeClearCanvas();
+      unsubscribeChatMessage();
+      unsubscribeCorrectGuess();
+      unsubscribeNextRound();
+      unsubscribeGameOver();
     };
+  }, []); // Empty dependency array - only run once
+
+  // Initialize canvas
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const ctx = canvas.getContext('2d');
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = '#000000';
   }, []);
 
-  useEffect(() => {
-    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [chatMessages]);
-
-  const startDrawing = (e) => {
-    if (!isDrawer) return;
-    setIsDrawing(true);
+  const drawLineOnCanvas = (line) => {
     const canvas = canvasRef.current;
-    const rect = canvas.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
-    
+    if (!canvas) return;
+
     const ctx = canvas.getContext('2d');
+    ctx.strokeStyle = line.color;
+    ctx.lineWidth = line.width;
+
     ctx.beginPath();
-    ctx.moveTo(x, y);
+    ctx.moveTo(line.x0, line.y0);
+    ctx.lineTo(line.x1, line.y1);
+    ctx.stroke();
   };
 
-  const draw = (e) => {
-    if (!isDrawing || !isDrawer) return;
-    
+  const clearCanvas = () => {
     const canvas = canvasRef.current;
-    const rect = canvas.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
-    
-    const ctx = canvas.getContext('2d');
-    ctx.lineTo(x, y);
-    ctx.strokeStyle = '#000';
-    ctx.lineWidth = 3;
-    ctx.lineCap = 'round';
-    ctx.stroke();
+    if (!canvas) return;
 
-    // Send drawing data
-    send('DRAW_LINE', {
-      roomCode,
-      line: { x, y }
-    });
+    const ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+  };
+
+  const startDrawing = (e) => {
+    if (!isMyTurn()) return;
+    setIsDrawing(true);
   };
 
   const stopDrawing = () => {
     setIsDrawing(false);
   };
 
-  const drawLineFromData = (line) => {
-    const canvas = canvasRef.current;
-    const ctx = canvas.getContext('2d');
-    ctx.lineTo(line.x, line.y);
-    ctx.strokeStyle = '#000';
-    ctx.lineWidth = 3;
-    ctx.lineCap = 'round';
-    ctx.stroke();
-  };
+  const draw = (e) => {
+    if (!isDrawing || !isMyTurn()) return;
 
-  const clearCanvas = () => {
     const canvas = canvasRef.current;
-    if (canvas) {
-      const ctx = canvas.getContext('2d');
-      ctx.fillStyle = 'white';
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
-    }
+    const rect = canvas.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+
+    const ctx = canvas.getContext('2d');
+    const lastX = canvas.lastX || x;
+    const lastY = canvas.lastY || y;
+
+    const line = {
+      x0: lastX,
+      y0: lastY,
+      x1: x,
+      y1: y,
+      color: ctx.strokeStyle,
+      width: ctx.lineWidth
+    };
+
+    drawLineOnCanvas(line);
+    sendMessage('DRAW_LINE', { roomCode, line });
+
+    canvas.lastX = x;
+    canvas.lastY = y;
   };
 
   const handleClearCanvas = () => {
-    if (!isDrawer) return;
+    if (!isMyTurn()) return;
     clearCanvas();
-    send('CLEAR_CANVAS', { roomCode });
+    sendMessage('CLEAR_CANVAS', { roomCode });
   };
 
-  const handleSendMessage = (e) => {
+  const handleGuess = (e) => {
     e.preventDefault();
-    if (!messageInput.trim()) return;
+    if (!guess.trim()) return;
 
-    if (isDrawer) {
-      send('CHAT_MESSAGE', {
-        roomCode,
-        username,
-        message: messageInput
-      });
-    } else {
-      send('GUESS_WORD', {
-        roomCode,
-        username,
-        guess: messageInput
-      });
-      send('CHAT_MESSAGE', {
-        roomCode,
-        username,
-        message: messageInput
-      });
-    }
-
-    setMessageInput('');
+    sendMessage('GUESS_WORD', { roomCode, username, guess: guess.trim() });
+    setGuess('');
   };
 
   const handleNextRound = () => {
-    send('NEXT_ROUND', { roomCode });
+    sendMessage('NEXT_ROUND', { roomCode });
   };
 
-  if (gameOver) {
+  const isMyTurn = () => {
+    return gameState?.currentDrawer === username;
+  };
+
+  // Show loading state while waiting for game state
+  if (!gameState) {
     return (
-      <div className="min-h-screen bg-linear-to-br from-green-500 via-emerald-500 to-teal-600 flex items-center justify-center p-4">
-        <div className="bg-white rounded-3xl shadow-2xl p-8 w-full max-w-2xl text-center">
-          <div className="text-6xl mb-6">🏆</div>
-          <h1 className="text-4xl font-bold text-transparent bg-clip-text bg-linear-to-r from-yellow-600 to-orange-600 mb-8">
-            Game Over!
-          </h1>
-          <div className="mb-8">
-            <h2 className="text-2xl font-bold text-gray-800 mb-4">Final Scores</h2>
-            <div className="space-y-3">
-              {finalScores.map((player, index) => (
-                <div
-                  key={index}
-                  className={`flex items-center justify-between p-4 rounded-xl ${
-                    index === 0 ? 'bg-yellow-100 border-2 border-yellow-400' : 'bg-gray-100'
-                  }`}
-                >
-                  <div className="flex items-center space-x-3">
-                    <span className="text-2xl font-bold text-gray-500">#{index + 1}</span>
-                    <span className="font-bold text-lg">{player.username}</span>
-                    {index === 0 && <span className="text-2xl">👑</span>}
-                  </div>
-                  <span className="text-2xl font-bold text-blue-600">{player.score}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-          <button
-            onClick={onLeave}
-            className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-8 rounded-xl transition duration-300 transform hover:scale-105"
-          >
-            Back to Lobby
-          </button>
+      <div className="min-h-screen bg-gradient-to-br from-blue-600 via-purple-500 to-pink-500 flex items-center justify-center">
+        <div className="bg-white rounded-3xl shadow-2xl p-8 text-center">
+          <div className="animate-spin rounded-full h-16 w-16 border-b-4 border-blue-500 mx-auto mb-4"></div>
+          <h2 className="text-2xl font-bold text-gray-800">Loading Scribble Game...</h2>
+          <p className="text-gray-600 mt-2">Please wait while we set up the game</p>
         </div>
       </div>
     );
   }
 
+  const currentDrawer = gameState.currentDrawer;
+  const currentWord = gameState.currentWord;
+  const roundNumber = gameState.round || 1;
+  const maxRounds = gameState.maxRounds || 3;
+
   return (
-    <div className="min-h-screen bg-gray-900 p-4">
+    <div className="min-h-screen bg-gradient-to-br from-blue-600 via-purple-500 to-pink-500 p-4">
       <div className="max-w-7xl mx-auto">
         {/* Header */}
-        <div className="bg-white rounded-2xl shadow-lg p-4 mb-4 flex justify-between items-center">
-          <div className="flex items-center space-x-6">
-            <h1 className="text-2xl font-bold text-transparent bg-clip-text bg-linear-to-r from-purple-600 to-pink-600">
-              Scribble
-            </h1>
-            <div className="bg-blue-100 px-4 py-2 rounded-lg">
-              <span className="text-sm text-gray-600">Round:</span>
-              <span className="ml-2 font-bold text-blue-600">{roundNumber}/3</span>
+        <div className="bg-white rounded-2xl shadow-xl p-4 mb-4">
+          <div className="flex justify-between items-center">
+            <div>
+              <h1 className="text-3xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-blue-600 to-purple-600">
+                ✏️ Scribble
+              </h1>
+              <p className="text-sm text-gray-600">Room: {roomCode}</p>
             </div>
-            <div className="bg-purple-100 px-4 py-2 rounded-lg">
-              <span className="text-sm text-gray-600">Word:</span>
-              <span className="ml-2 font-bold text-purple-600">
-                {isDrawer ? myWord : '_ '.repeat(wordLength)}
-              </span>
+            <div className="text-center">
+              <p className="text-lg font-bold text-gray-800">Round {roundNumber}/{maxRounds}</p>
+              <p className="text-sm text-gray-600">
+                {isMyTurn() ? `Your word: ${currentWord}` : 'Guess the drawing!'}
+              </p>
             </div>
-            <div className="bg-green-100 px-4 py-2 rounded-lg">
-              <span className="text-sm text-gray-600">Drawing:</span>
-              <span className="ml-2 font-bold text-green-600">{currentDrawer}</span>
-            </div>
+            <button
+              onClick={onLeaveRoom}
+              className="px-4 py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg transition-colors"
+            >
+              Leave Game
+            </button>
           </div>
-          <button
-            onClick={onLeave}
-            className="px-4 py-2 text-sm text-red-600 hover:text-red-700 border border-red-300 rounded-lg hover:bg-red-50 transition"
-          >
-            Leave
-          </button>
         </div>
 
-        <div className="grid lg:grid-cols-3 gap-4">
+        {/* Players Scoreboard */}
+        <div className="bg-white rounded-2xl shadow-xl p-4 mb-4">
+          <h2 className="text-lg font-bold mb-3">Players</h2>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+            {gameState.players?.map((player) => (
+              <div
+                key={player.username}
+                className={`p-3 rounded-lg ${
+                  player.username === currentDrawer
+                    ? 'bg-blue-100 border-2 border-blue-500'
+                    : 'bg-gray-100'
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <span className="font-semibold">
+                    {player.username}
+                    {player.username === username && ' (You)'}
+                  </span>
+                  <span className="text-xl font-bold text-blue-500">
+                    {player.score || 0}
+                  </span>
+                </div>
+                {player.username === currentDrawer && (
+                  <p className="text-xs text-blue-600 mt-1">✏️ Drawing</p>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
           {/* Canvas */}
           <div className="lg:col-span-2">
-            <div className="bg-white rounded-2xl shadow-lg p-4">
+            <div className="bg-white rounded-2xl shadow-xl p-4">
+              <div className="mb-4 flex justify-between items-center">
+                <h2 className="text-xl font-bold">
+                  {isMyTurn() ? '🎨 Draw your word!' : '👀 Watch and guess!'}
+                </h2>
+                {isMyTurn() && (
+                  <button
+                    onClick={handleClearCanvas}
+                    className="px-4 py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg transition-colors"
+                  >
+                    Clear Canvas
+                  </button>
+                )}
+              </div>
               <canvas
                 ref={canvasRef}
                 width={800}
                 height={600}
-                className="border-2 border-gray-300 rounded-xl cursor-crosshair w-full"
                 onMouseDown={startDrawing}
-                onMouseMove={draw}
                 onMouseUp={stopDrawing}
+                onMouseMove={draw}
                 onMouseLeave={stopDrawing}
+                className={`border-2 border-gray-300 rounded-lg w-full ${
+                  isMyTurn() ? 'cursor-crosshair' : 'cursor-not-allowed'
+                }`}
               />
-              {isDrawer && (
-                <button
-                  onClick={handleClearCanvas}
-                  className="mt-4 w-full bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded-lg transition"
-                >
-                  Clear Canvas
-                </button>
-              )}
             </div>
           </div>
 
-          {/* Chat */}
-          <div className="bg-white rounded-2xl shadow-lg p-4 flex flex-col h-[680px]">
-            <h2 className="text-xl font-bold text-gray-800 mb-4">Chat</h2>
-            <div className="flex-1 overflow-y-auto mb-4 space-y-2">
-              {chatMessages.map((msg, index) => (
-                <div
-                  key={index}
-                  className={`p-2 rounded-lg ${
-                    msg.username === 'System' ? 'bg-yellow-100' : 'bg-gray-100'
-                  }`}
-                >
-                  <span className="font-bold text-sm">{msg.username}:</span>
-                  <span className="ml-2 text-sm">{msg.message}</span>
-                </div>
-              ))}
-              <div ref={chatEndRef} />
-            </div>
-            <form onSubmit={handleSendMessage} className="flex space-x-2">
-              <input
-                type="text"
-                value={messageInput}
-                onChange={(e) => setMessageInput(e.target.value)}
-                placeholder={isDrawer ? "Chat..." : "Guess the word..."}
-                className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
-              />
-              <button
-                type="submit"
-                className="bg-blue-600 hover:bg-blue-700 text-white font-bold px-4 py-2 rounded-lg transition"
-              >
-                Send
-              </button>
-            </form>
-            {guessedPlayers.length > 0 && (
-              <div className="mt-4">
-                <p className="text-sm text-gray-600 mb-2">Guessed correctly:</p>
-                <div className="flex flex-wrap gap-2">
-                  {guessedPlayers.map((player, index) => (
-                    <span key={index} className="bg-green-100 text-green-800 px-2 py-1 rounded-full text-xs font-semibold">
-                      {player}
-                    </span>
-                  ))}
-                </div>
+          {/* Chat & Guess */}
+          <div className="lg:col-span-1">
+            <div className="bg-white rounded-2xl shadow-xl p-4 h-full flex flex-col">
+              <h2 className="text-xl font-bold mb-4">Chat</h2>
+              
+              {/* Messages */}
+              <div className="flex-1 overflow-y-auto mb-4 space-y-2">
+                {chatMessages.map((msg, index) => (
+                  <div
+                    key={index}
+                    className={`p-2 rounded-lg ${
+                      msg.isSystem
+                        ? 'bg-green-100 text-green-800'
+                        : 'bg-gray-100'
+                    }`}
+                  >
+                    <span className="font-semibold">{msg.username}:</span>{' '}
+                    <span>{msg.message}</span>
+                  </div>
+                ))}
               </div>
-            )}
+
+              {/* Guess Input */}
+              {!isMyTurn() && (
+                <form onSubmit={handleGuess} className="flex gap-2">
+                  <input
+                    type="text"
+                    value={guess}
+                    onChange={(e) => setGuess(e.target.value)}
+                    placeholder="Type your guess..."
+                    className="flex-1 px-4 py-2 border-2 border-gray-300 rounded-lg focus:outline-none focus:border-blue-500"
+                  />
+                  <button
+                    type="submit"
+                    className="px-6 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg transition-colors"
+                  >
+                    Send
+                  </button>
+                </form>
+              )}
+
+              {/* Next Round Button (for drawer) */}
+              {isMyTurn() && gameState.allGuessed && (
+                <button
+                  onClick={handleNextRound}
+                  className="w-full mt-4 px-6 py-3 bg-green-500 hover:bg-green-600 text-white rounded-lg transition-colors font-bold"
+                >
+                  Next Round →
+                </button>
+              )}
+            </div>
           </div>
         </div>
       </div>

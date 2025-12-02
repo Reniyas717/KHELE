@@ -84,16 +84,18 @@ export default function GameRoom({ roomCode, username, initialRoomData, preSelec
       preSelectedGame && 
       room?.players?.length >= 2 && 
       !gameStarted && 
-      room?.host === username;
+      room?.host === username &&
+      isConnected; // Add this check
 
     if (shouldAutoStart) {
-      console.log('🚀 Auto-starting game in 2 seconds...');
+      console.log('🚀 Auto-starting game in 3 seconds...');
       const timer = setTimeout(() => {
+        console.log('🎮 Auto-start triggered');
         handleStartGame();
-      }, 2000);
+      }, 3000); // Increased to 3 seconds to ensure all players connected
       return () => clearTimeout(timer);
     }
-  }, [room?.players?.length, gameStarted]);
+  }, [room?.players?.length, gameStarted, isConnected]);
 
   const handleStartGame = () => {
     if (room?.players?.length < 2) {
