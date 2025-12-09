@@ -42,7 +42,8 @@ export default function GameRoom({ roomCode, username, initialRoomData, preSelec
     });
 
     const unsubscribePlayerLeft = on('PLAYER_LEFT', (payload) => {
-      console.log('👋 PLAYER_LEFT event:', payload.username);
+      console.log('👋 PLAYER_LEFT event:', payload);
+      
       setRoom(prevRoom => {
         if (!prevRoom) return prevRoom;
         
@@ -105,6 +106,28 @@ export default function GameRoom({ roomCode, username, initialRoomData, preSelec
     }
   }, [isConnected]);
 
+  // Auto-start game
+  useEffect(() => {
+    const shouldAutoStart = 
+      preSelectedGame && 
+      room?.players?.length >= 2 && 
+      !gameStarted && 
+      room?.host === username &&
+      isConnected;
+
+    if (shouldAutoStart) {
+      console.log('\n🚀 Auto-starting game...');
+      console.log('👥 Players:', room.players.map(p => p.username));
+      
+      const timer = setTimeout(() => {
+        console.log('🎮 Triggering START_GAME');
+        handleStartGame();
+      }, 2000);
+      
+      return () => clearTimeout(timer);
+    }
+  }, [room?.players?.length, gameStarted, isConnected]);
+
   const handleStartGame = () => {
     if (room?.players?.length < 2) {
       alert('Need at least 2 players to start!');
@@ -117,7 +140,7 @@ export default function GameRoom({ roomCode, username, initialRoomData, preSelec
       return;
     }
 
-    console.log(`\n🎮 Host starting game: ${gameType}`);
+    console.log(`\n🎮 Starting game: ${gameType}`);
     console.log(`👥 Players: ${room.players.map(p => p.username).join(', ')}\n`);
     
     sendMessage('START_GAME', { roomCode, gameType, username });
@@ -134,10 +157,63 @@ export default function GameRoom({ roomCode, username, initialRoomData, preSelec
     onLeaveRoom();
   };
 
-  // Render game if started
-  if (gameStarted && initialGameState) {
-    console.log(`🎯 Rendering ${currentGame} game`);
-    
+  // Listen for WebSocket events
+  useEffect(() => {
+    if (!isConnected) {
+      console.log('⚠️ WebSocket not connected');
+      return;
+    }
+
+    console.log('🎮 Setting up GameRoom listeners');
+
+    // Listen for player joined
+    const unsubPlayerJoined = on('PLAYER_JOINED', (data) => {
+      console.log('👥 PLAYER_JOINED event:', data);
+      const payload = data.payload || data;
+      
+      if (payload.room) {
+        console.log('✅ Updating room with new player data');
+        setRoom(payload.room);
+      }
+    });
+
+    // Listen for room updates
+    const unsubRoomUpdate = on('ROOM_UPDATE', (data) => {
+      console.log('🔄 ROOM_UPDATE event:', data);
+      const payload = data.payload || data;
+      
+      if (payload.room) {
+        console.log('✅ Updating room data');
+        setRoom(payload.room);
+      }
+    });
+
+    // Listen for game start
+    const unsubGameStarted = on('GAME_STARTED', (data) => {
+      console.log('🎮 GAME_STARTED event:', data);
+      const payload = data.payload || data;
+      
+      if (payload.room) {
+        setRoom(payload.room);
+      }
+      
+      setGameStarted(true);
+      setCurrentGame(payload.gameType);
+      setInitialGameState(payload.gameState);
+      
+      console.log('✅ Game started:', payload.gameType);
+    });
+
+    return () => {
+      console.log('🧹 Cleaning up GameRoom listeners');
+      unsubPlayerJoined?.();
+      unsubRoomUpdate?.();
+      unsubGameStarted?.();
+    };
+  }, [on, isConnected]);
+
+  // Show game if started
+  if (gameStarted && currentGame && initialGameState) {
     if (currentGame === 'scribble') {
       return (
         <ScribbleGame
@@ -145,146 +221,111 @@ export default function GameRoom({ roomCode, username, initialRoomData, preSelec
           username={username}
           players={room?.players || []}
           initialGameState={initialGameState}
-          onLeaveRoom={handleLeaveRoom}
+          onLeaveRoom={onLeaveRoom}
         />
       );
-    }
-
-    if (currentGame === 'uno') {
+    } else if (currentGame === 'uno') {
       return (
         <UNOGame
           roomCode={roomCode}
           username={username}
           players={room?.players || []}
           initialGameState={initialGameState}
-          onLeaveRoom={handleLeaveRoom}
+          onLeaveRoom={onLeaveRoom}
         />
       );
     }
   }
 
-  // Waiting room
-  const isHost = room?.host === username;
-  const canStart = room?.players?.length >= 2;
-
+  // Lobby view
   return (
-    <div className="min-h-screen bg-gradient-to-br from-purple-600 via-pink-500 to-red-500 flex items-center justify-center p-4">
-      <div className="bg-white rounded-3xl shadow-2xl p-8 w-full max-w-4xl">
-        {/* Header */}
-        <div className="flex justify-between items-center mb-8">
-          <div>
-            <h1 className="text-4xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-purple-600 to-pink-600">
-              Game Room
-            </h1>
-            <p className="text-gray-600 mt-1">
-              {isHost ? '🎮 You are the host' : `👤 Host: ${room?.host}`}
+    <div className="min-h-screen bg-gradient-to-br from-purple-600 via-blue-500 to-pink-500 p-8">
+      <div className="max-w-4xl mx-auto">
+        <div className="bg-white rounded-2xl shadow-2xl p-8">
+          {/* Header */}
+          <div className="flex justify-between items-center mb-8">
+            <div>
+              <h1 className="text-4xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-purple-600 to-blue-600">
+                Game Room
+              </h1>
+              <p className="text-gray-600 mt-2">Room Code: <span className="font-mono font-bold text-lg">{roomCode}</span></p>
+            </div>
+            <button
+              onClick={onLeaveRoom}
+              className="px-6 py-3 bg-red-500 hover:bg-red-600 text-white rounded-lg font-semibold transition-all transform hover:scale-105"
+            >
+              Leave Room
+            </button>
+          </div>
+
+          {/* Game Type */}
+          <div className="mb-8 p-4 bg-gradient-to-r from-purple-100 to-blue-100 rounded-lg">
+            <p className="text-lg font-semibold text-gray-800">
+              Game: <span className="text-purple-600 capitalize">{room?.gameType || 'Unknown'}</span>
             </p>
           </div>
-          <button
-            onClick={handleLeaveRoom}
-            className="px-6 py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg transition-colors"
-          >
-            Leave Room
-          </button>
-        </div>
 
-        {/* Room Code */}
-        {preSelectedGame && (
-          <div className="bg-gradient-to-r from-purple-500 to-pink-500 rounded-2xl p-8 mb-8 text-center">
-            <h2 className="text-white text-2xl font-semibold mb-4">
-              Share this code with friends:
-            </h2>
-            <div className="bg-white rounded-xl p-6">
-              <p className="text-6xl font-bold text-purple-600 tracking-[0.3em] font-mono">
-                {roomCode}
+          {/* Players */}
+          <div className="mb-8">
+            <h2 className="text-2xl font-bold mb-4 text-gray-800">Players ({room?.players?.length || 0})</h2>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {room?.players?.map((player, index) => (
+                <div
+                  key={player.username || index}
+                  className={`p-4 rounded-lg border-2 ${
+                    player.username === room?.host
+                      ? 'bg-yellow-50 border-yellow-400'
+                      : 'bg-gray-50 border-gray-300'
+                  }`}
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span className="text-2xl">
+                        {player.username === room?.host ? '👑' : '👤'}
+                      </span>
+                      <div>
+                        <p className="font-bold text-lg">
+                          {player.username}
+                          {player.username === username && ' (You)'}
+                        </p>
+                        {player.username === room?.host && (
+                          <p className="text-sm text-yellow-600">Host</p>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Start Game Button */}
+          {username === room?.host && !gameStarted && (
+            <div className="text-center">
+              <button
+                onClick={handleStartGame}
+                disabled={!room?.players || room.players.length < 2}
+                className={`px-8 py-4 rounded-lg font-bold text-lg transition-all transform hover:scale-105 ${
+                  room?.players && room.players.length >= 2
+                    ? 'bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600 text-white shadow-lg'
+                    : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                }`}
+              >
+                {room?.players && room.players.length < 2
+                  ? 'Need at least 2 players'
+                  : 'Start Game'}
+              </button>
+            </div>
+          )}
+
+          {username !== room?.host && !gameStarted && (
+            <div className="text-center p-4 bg-blue-50 rounded-lg">
+              <p className="text-blue-800 font-semibold">
+                Waiting for <span className="text-blue-600">{room?.host}</span> to start the game...
               </p>
             </div>
-            <p className="text-white mt-4 text-lg">
-              Game: {preSelectedGame === 'scribble' ? '✏️ Scribble' : '🃏 UNO'}
-            </p>
-          </div>
-        )}
-
-        {/* Connection Status */}
-        <div className="mb-6">
-          <div className="flex items-center gap-2">
-            <div className={`w-3 h-3 rounded-full ${isConnected ? 'bg-green-500' : 'bg-yellow-500'} animate-pulse`}></div>
-            <span className="text-sm font-semibold text-gray-700">
-              {isConnected ? '✅ Connected' : '⏳ Connecting...'}
-            </span>
-          </div>
+          )}
         </div>
-
-        {/* Players List */}
-        <div className="mb-8">
-          <h3 className="text-2xl font-bold text-gray-800 mb-4">
-            Players ({room?.players?.length || 0}/8)
-          </h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            {room?.players?.map((player, index) => (
-              <div
-                key={player.username || index}
-                className="bg-gradient-to-r from-purple-100 to-pink-100 rounded-lg p-4 flex items-center justify-between"
-              >
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 bg-purple-500 rounded-full flex items-center justify-center text-white font-bold">
-                    {player.username?.[0]?.toUpperCase() || '?'}
-                  </div>
-                  <span className="font-semibold text-gray-800">
-                    {player.username}
-                    {player.username === room.host && (
-                      <span className="ml-2 text-xs bg-yellow-400 text-yellow-900 px-2 py-1 rounded-full">
-                        HOST
-                      </span>
-                    )}
-                    {player.username === username && (
-                      <span className="ml-2 text-xs bg-blue-400 text-blue-900 px-2 py-1 rounded-full">
-                        YOU
-                      </span>
-                    )}
-                  </span>
-                </div>
-                <span className="text-gray-600">Score: {player.score}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Waiting Message */}
-        {!canStart && (
-          <div className="bg-yellow-100 border border-yellow-400 text-yellow-800 px-6 py-4 rounded-lg mb-6 text-center">
-            <p className="font-semibold">
-              ⏳ Waiting for at least 2 players to join...
-            </p>
-            <p className="text-sm mt-1">
-              Share the room code <span className="font-mono font-bold">{roomCode}</span>
-            </p>
-          </div>
-        )}
-
-        {/* Start Button - ONLY SHOWS FOR HOST */}
-        {isHost && (currentGame || preSelectedGame) && !gameStarted && (
-          <button
-            onClick={handleStartGame}
-            disabled={!canStart || !isConnected}
-            className={`w-full py-4 rounded-xl font-bold text-lg transition-all ${
-              canStart && isConnected
-                ? 'bg-gradient-to-r from-green-500 to-emerald-600 text-white hover:from-green-600 hover:to-emerald-700 transform hover:scale-105'
-                : 'bg-gray-300 text-gray-500 cursor-not-allowed'
-            }`}
-          >
-            {!isConnected ? '⏳ Connecting...' : canStart ? '🎮 Start Game' : '⏳ Need 2+ Players'}
-          </button>
-        )}
-
-        {/* Waiting for host */}
-        {!isHost && canStart && !gameStarted && (
-          <div className="bg-blue-100 border border-blue-400 text-blue-800 px-6 py-4 rounded-lg text-center">
-            <p className="font-semibold">
-              ⏳ Waiting for {room?.host} to start the game...
-            </p>
-          </div>
-        )}
       </div>
     </div>
   );

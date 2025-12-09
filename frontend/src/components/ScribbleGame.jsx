@@ -38,100 +38,76 @@ export default function ScribbleGame({ roomCode, username, players, initialGameS
   }, [initialGameState, username]);
 
   useEffect(() => {
-    // Skip if already setup
     if (setupComplete.current) return;
-    setupComplete.current = true;
 
-    console.log('🎨 ScribbleGame mounted for room:', roomCode, 'user:', username);
+    console.log('🎮 Setting up ScribbleGame listeners');
 
-    // Listen for game updates
-    const unsubscribeWordSelected = on('WORD_SELECTED', (payload) => {
-      console.log('📝 Word selected:', payload);
-      setGameState(payload.gameState);
+    // Listen for drawing updates
+    const unsubDrawLine = on('DRAW_LINE', (data) => {
+      console.log('✏️ Received DRAW_LINE');
+      const line = data.payload?.line || data.line; // Handle both formats
+      if (line) {
+        drawLineOnCanvas(line);
+      }
+    });
+
+    const unsubClearCanvas = on('CLEAR_CANVAS', () => {
+      console.log('🗑️ Received CLEAR_CANVAS');
+      clearCanvas();
+    });
+
+    // Listen for word selection
+    const unsubWordSelected = on('WORD_SELECTED', (data) => {
+      console.log('📝 Received WORD_SELECTED:', data);
+      setGameState(data.gameState || data.payload?.gameState);
       setShowWordSelection(false);
     });
 
-    const unsubscribeGameStarted = on('GAME_STARTED', (payload) => {
-      console.log('🎨 Game started:', payload);
-      if (payload.gameState && payload.gameType === 'scribble') {
-        setGameState(payload.gameState);
-        if (payload.gameState.currentDrawer === username && !payload.gameState.currentWord) {
-          setShowWordSelection(true);
-        }
-      }
-    });
-
-    const unsubscribeDrawLine = on('DRAW_LINE', (payload) => {
-      if (canvasRef.current && payload.line) {
-        drawLineOnCanvas(payload.line);
-      }
-    });
-
-    const unsubscribeClearCanvas = on('CLEAR_CANVAS', () => {
-      clearCanvas();
-    });
-
-    const unsubscribeChatMessage = on('CHAT_MESSAGE', (payload) => {
-      setChatMessages(prev => [...prev, { 
-        username: payload.username, 
-        message: payload.message 
-      }]);
-    });
-
-    const unsubscribeCorrectGuess = on('CORRECT_GUESS', (payload) => {
-      setChatMessages(prev => [...prev, { 
-        username: 'System', 
-        message: `${payload.username} guessed correctly! 🎉`,
-        isSystem: true 
-      }]);
-      setGameState(payload.gameState);
+    // Listen for correct guesses
+    const unsubCorrectGuess = on('CORRECT_GUESS', (data) => {
+      console.log('✅ Received CORRECT_GUESS:', data);
+      const payload = data.payload || data;
       
-      // Auto next round if all guessed
-      if (payload.gameState.allGuessed) {
-        setTimeout(() => {
-          handleNextRound();
-        }, 3000);
-      }
+      setChatMessages(prev => [...prev, {
+        username: 'System',
+        message: `${payload.username} guessed correctly! (+${payload.points} points)`,
+        isSystem: true,
+        isCorrect: true
+      }]);
+      
+      setGameState(payload.gameState);
     });
 
-    const unsubscribeNextRound = on('NEXT_ROUND', (payload) => {
-      setGameState(payload.gameState);
+    // Listen for chat messages (wrong guesses)
+    const unsubChatMessage = on('CHAT_MESSAGE', (data) => {
+      console.log('💬 Received CHAT_MESSAGE:', data);
+      const payload = data.payload || data;
+      
+      setChatMessages(prev => [...prev, {
+        username: payload.username,
+        message: payload.message,
+        isSystem: payload.isSystem || false
+      }]);
+    });
+
+    // Listen for next round
+    const unsubNextRound = on('NEXT_ROUND', (data) => {
+      console.log('➡️ Received NEXT_ROUND');
+      setGameState(data.payload?.gameState || data.gameState);
       clearCanvas();
       setChatMessages([]);
-      
-      // Show word selection if you're the new drawer
-      if (payload.gameState.currentDrawer === username && !payload.gameState.currentWord) {
-        setShowWordSelection(true);
-      }
     });
 
-    const unsubscribeGameOver = on('GAME_OVER', (payload) => {
-      const scoresText = payload.finalScores
-        .sort((a, b) => b.score - a.score)
-        .map((p, i) => `${i + 1}. ${p.username}: ${p.score}`)
-        .join('\n');
-      
-      alert(`🏆 Game Over!\n\nWinner: ${payload.winner}\n\nFinal Scores:\n${scoresText}`);
-      onLeaveRoom();
-    });
-
-    // Request game state as fallback
-    if (!gameState && !initialGameState) {
-      setTimeout(() => {
-        sendMessage('REQUEST_GAME_STATE', { roomCode });
-      }, 1000);
-    }
+    setupComplete.current = true;
 
     return () => {
-      console.log('🧹 Cleaning up ScribbleGame');
-      unsubscribeWordSelected();
-      unsubscribeGameStarted();
-      unsubscribeDrawLine();
-      unsubscribeClearCanvas();
-      unsubscribeChatMessage();
-      unsubscribeCorrectGuess();
-      unsubscribeNextRound();
-      unsubscribeGameOver();
+      console.log('🧹 Cleaning up ScribbleGame listeners');
+      unsubDrawLine?.();
+      unsubClearCanvas?.();
+      unsubWordSelected?.();
+      unsubCorrectGuess?.();
+      unsubChatMessage?.();
+      unsubNextRound?.();
     };
   }, []); // Empty dependency - run once
 
@@ -412,75 +388,85 @@ export default function ScribbleGame({ roomCode, username, players, initialGameS
                 className={`border-2 border-gray-300 rounded-lg w-full bg-white ${
                   canDraw ? 'cursor-crosshair' : 'cursor-not-allowed'
                 }`}
+                style={{ maxHeight: '600px' }}
               />
             </div>
           </div>
 
-          {/* Chat & Guess */}
+          {/* Chat & Guess - Fixed height with scrollable chat */}
           <div className="lg:col-span-1">
-            <div className="bg-white rounded-2xl shadow-xl p-4 h-full flex flex-col">
-              <h2 className="text-xl font-bold mb-4">Chat</h2>
+            <div className="bg-white rounded-2xl shadow-xl p-4 flex flex-col" style={{ height: '680px' }}>
+              <h2 className="text-xl font-bold mb-3">Chat</h2>
               
-              <div className="flex-1 overflow-y-auto mb-4 space-y-2 min-h-[400px] max-h-[500px]">
-                {chatMessages.map((msg, index) => (
-                  <div
-                    key={index}
-                    className={`p-2 rounded-lg ${
-                      msg.isSystem
-                        ? 'bg-green-100 text-green-800'
-                        : 'bg-gray-100'
-                    }`}
-                  >
-                    <span className="font-semibold">{msg.username}:</span>{' '}
-                    <span>{msg.message}</span>
-                  </div>
-                ))}
+              {/* Scrollable chat messages - takes remaining space */}
+              <div className="flex-1 overflow-y-auto mb-3 space-y-2 bg-gray-50 rounded-lg p-3">
+                {chatMessages.length === 0 ? (
+                  <p className="text-gray-400 text-center italic">No messages yet...</p>
+                ) : (
+                  chatMessages.map((msg, index) => (
+                    <div
+                      key={index}
+                      className={`p-2 rounded-lg ${
+                        msg.isCorrect
+                          ? 'bg-green-100 text-green-800 font-semibold'
+                          : msg.isSystem
+                          ? 'bg-yellow-100 text-yellow-800'
+                          : 'bg-white border border-gray-200'
+                      }`}
+                    >
+                      <span className="font-semibold">{msg.username}:</span>{' '}
+                      <span>{msg.message}</span>
+                    </div>
+                  ))
+                )}
               </div>
 
-              {!isMyTurn() && gameState?.drawingStarted && !gameState.players?.find(p => p.username === username)?.hasGuessed && (
-                <form onSubmit={handleGuess} className="flex gap-2">
-                  <input
-                    type="text"
-                    value={guess}
-                    onChange={(e) => setGuess(e.target.value)}
-                    placeholder="Type your guess..."
-                    className="flex-1 px-4 py-2 border-2 border-gray-300 rounded-lg focus:outline-none focus:border-blue-500"
-                    autoFocus
-                    disabled={!gameState?.drawingStarted || !gameState?.currentWord}
-                  />
-                  <button
-                    type="submit"
-                    disabled={!guess.trim()}
-                    className="px-6 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    Send
-                  </button>
-                </form>
+              {/* Guess Input - Fixed at bottom, shown to ALL players except drawer when drawing started */}
+              {!isMyTurn() && gameState?.drawingStarted && (
+                <>
+                  {!gameState?.players?.find(p => p.username === username)?.hasGuessed ? (
+                    <form onSubmit={handleGuess} className="flex gap-2">
+                      <input
+                        type="text"
+                        value={guess}
+                        onChange={(e) => setGuess(e.target.value)}
+                        placeholder="Type your guess..."
+                        className="flex-1 px-3 py-2 border-2 border-gray-300 rounded-lg focus:outline-none focus:border-blue-500"
+                        autoComplete="off"
+                      />
+                      <button
+                        type="submit"
+                        disabled={!guess.trim()}
+                        className="px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed font-semibold"
+                      >
+                        Send
+                      </button>
+                    </form>
+                  ) : (
+                    <div className="p-3 bg-green-100 border-2 border-green-500 rounded-lg text-center">
+                      <p className="text-green-800 font-bold text-sm">
+                        ✅ You guessed correctly! Waiting for others...
+                      </p>
+                    </div>
+                  )}
+                </>
               )}
 
+              {/* Show word to drawer */}
               {isMyTurn() && gameState?.drawingStarted && (
-                <div className="p-4 bg-blue-100 border-2 border-blue-500 rounded-lg text-center">
-                  <p className="text-blue-800 font-bold">
-                    🎨 You are drawing: <span className="text-xl">{gameState?.currentWord}</span>
+                <div className="p-3 bg-blue-100 border-2 border-blue-500 rounded-lg text-center">
+                  <p className="text-blue-800 font-bold text-sm">
+                    🎨 Your word: <span className="text-lg">{gameState?.currentWord}</span>
                   </p>
-                  <p className="text-sm text-blue-600 mt-1">
-                    Others are trying to guess your drawing!
-                  </p>
+                  <p className="text-xs text-blue-600 mt-1">Others are trying to guess!</p>
                 </div>
               )}
 
-              {gameState?.players?.find(p => p.username === username)?.hasGuessed && !isMyTurn() && (
-                <div className="p-4 bg-green-100 border-2 border-green-500 rounded-lg text-center">
-                  <p className="text-green-800 font-bold">
-                    ✅ You guessed correctly! Waiting for others...
-                  </p>
-                </div>
-              )}
-
-              {gameState.allGuessed && (
-                <div className="mt-4 p-4 bg-green-100 border-2 border-green-500 rounded-lg text-center">
-                  <p className="text-green-800 font-bold">
-                    🎉 Everyone guessed! Moving to next round...
+              {/* Waiting message when no drawing */}
+              {!gameState?.drawingStarted && (
+                <div className="p-3 bg-gray-100 border-2 border-gray-300 rounded-lg text-center">
+                  <p className="text-gray-600 text-sm">
+                    ⏳ Waiting for {gameState?.currentDrawer} to choose a word...
                   </p>
                 </div>
               )}
