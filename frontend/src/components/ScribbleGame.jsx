@@ -176,7 +176,14 @@ export default function ScribbleGame({ roomCode, username, players, initialGameS
   };
 
   const startDrawing = (e) => {
-    if (!isMyTurn() || !gameState.drawingStarted) return;
+    if (!canDraw) {
+      console.log('⚠️ Cannot draw - conditions not met:', { 
+        isMyTurn: isMyTurn(), 
+        drawingStarted: gameState?.drawingStarted,
+        hasWord: !!gameState?.currentWord 
+      });
+      return;
+    }
     
     const canvas = canvasRef.current;
     const rect = canvas.getBoundingClientRect();
@@ -195,7 +202,7 @@ export default function ScribbleGame({ roomCode, username, players, initialGameS
   };
 
   const draw = (e) => {
-    if (!isDrawing || !isMyTurn() || !gameState.drawingStarted) return;
+    if (!isDrawing || !canDraw) return;
 
     const canvas = canvasRef.current;
     const rect = canvas.getBoundingClientRect();
@@ -222,7 +229,7 @@ export default function ScribbleGame({ roomCode, username, players, initialGameS
   };
 
   const handleClearCanvas = () => {
-    if (!isMyTurn()) return;
+    if (!canDraw) return;
     clearCanvas();
     sendMessage('CLEAR_CANVAS', { roomCode });
   };
@@ -231,6 +238,7 @@ export default function ScribbleGame({ roomCode, username, players, initialGameS
     e.preventDefault();
     if (!guess.trim()) return;
 
+    console.log('📤 Sending guess:', guess);
     sendMessage('GUESS_WORD', { roomCode, username, guess: guess.trim() });
     setGuess('');
   };
@@ -239,15 +247,29 @@ export default function ScribbleGame({ roomCode, username, players, initialGameS
     sendMessage('NEXT_ROUND', { roomCode });
   };
 
-  const handleWordSelect = (word) => {
-    console.log('📝 Selecting word:', word);
+  const handleWordSelect = async (word) => {
+    if (!isMyTurn()) return;
+    
+    console.log('✅ Word selected:', word);
+    
+    // Send to server
     sendMessage('SELECT_WORD', { roomCode, word });
+    
+    // Update local state immediately for better UX
     setShowWordSelection(false);
+    setGameState(prev => ({
+      ...prev,
+      currentWord: word,
+      drawingStarted: true,
+      wordOptions: []
+    }));
   };
 
   const isMyTurn = () => {
     return gameState?.currentDrawer === username;
   };
+
+  const canDraw = isMyTurn() && gameState?.drawingStarted && gameState?.currentWord;
 
   // Show loading state while waiting for game state
   if (!gameState) {
@@ -364,9 +386,13 @@ export default function ScribbleGame({ roomCode, username, players, initialGameS
             <div className="bg-white rounded-2xl shadow-xl p-4">
               <div className="mb-4 flex justify-between items-center">
                 <h2 className="text-xl font-bold">
-                  {isMyTurn() ? '🎨 Draw your word!' : '👀 Watch and guess!'}
+                  {isMyTurn() 
+                    ? gameState?.drawingStarted 
+                      ? '🎨 Draw your word!' 
+                      : '📝 Select a word first...'
+                    : '👀 Watch and guess!'}
                 </h2>
-                {isMyTurn() && gameState.drawingStarted && (
+                {isMyTurn() && gameState?.drawingStarted && (
                   <button
                     onClick={handleClearCanvas}
                     className="px-4 py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg transition-colors"
@@ -384,7 +410,7 @@ export default function ScribbleGame({ roomCode, username, players, initialGameS
                 onMouseMove={draw}
                 onMouseLeave={stopDrawing}
                 className={`border-2 border-gray-300 rounded-lg w-full bg-white ${
-                  isMyTurn() && gameState.drawingStarted ? 'cursor-crosshair' : 'cursor-not-allowed'
+                  canDraw ? 'cursor-crosshair' : 'cursor-not-allowed'
                 }`}
               />
             </div>
@@ -411,7 +437,7 @@ export default function ScribbleGame({ roomCode, username, players, initialGameS
                 ))}
               </div>
 
-              {!isMyTurn() && gameState.drawingStarted && !gameState.players.find(p => p.username === username)?.hasGuessed && (
+              {!isMyTurn() && gameState?.drawingStarted && !gameState.players?.find(p => p.username === username)?.hasGuessed && (
                 <form onSubmit={handleGuess} className="flex gap-2">
                   <input
                     type="text"
@@ -420,14 +446,35 @@ export default function ScribbleGame({ roomCode, username, players, initialGameS
                     placeholder="Type your guess..."
                     className="flex-1 px-4 py-2 border-2 border-gray-300 rounded-lg focus:outline-none focus:border-blue-500"
                     autoFocus
+                    disabled={!gameState?.drawingStarted || !gameState?.currentWord}
                   />
                   <button
                     type="submit"
-                    className="px-6 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg transition-colors"
+                    disabled={!guess.trim()}
+                    className="px-6 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     Send
                   </button>
                 </form>
+              )}
+
+              {isMyTurn() && gameState?.drawingStarted && (
+                <div className="p-4 bg-blue-100 border-2 border-blue-500 rounded-lg text-center">
+                  <p className="text-blue-800 font-bold">
+                    🎨 You are drawing: <span className="text-xl">{gameState?.currentWord}</span>
+                  </p>
+                  <p className="text-sm text-blue-600 mt-1">
+                    Others are trying to guess your drawing!
+                  </p>
+                </div>
+              )}
+
+              {gameState?.players?.find(p => p.username === username)?.hasGuessed && !isMyTurn() && (
+                <div className="p-4 bg-green-100 border-2 border-green-500 rounded-lg text-center">
+                  <p className="text-green-800 font-bold">
+                    ✅ You guessed correctly! Waiting for others...
+                  </p>
+                </div>
               )}
 
               {gameState.allGuessed && (
@@ -444,37 +491,3 @@ export default function ScribbleGame({ roomCode, username, players, initialGameS
     </div>
   );
 }
-
-const handleCreateRoom = async (gameType) => {
-  if (!user) {
-    alert('Please login first!');
-    return;
-  }
-
-  try {
-    setIsCreating(true);
-    console.log(`🎮 Creating ${gameType} room for user:`, user.username);
-    
-    const response = await api.post('/rooms/create', {
-      host: user.username,
-      gameType: gameType
-    });
-
-    console.log('✅ Room created:', response.data);
-
-    const roomData = response.data.room;
-    
-    setCurrentRoom({
-      code: roomData.roomCode,
-      data: roomData,
-      preSelectedGame: gameType
-    });
-
-    console.log('🚪 Navigating to room:', roomData.roomCode);
-  } catch (error) {
-    console.error('❌ Error creating room:', error);
-    alert(error.response?.data?.message || 'Failed to create room');
-  } finally {
-    setIsCreating(false);
-  }
-};

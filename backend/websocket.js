@@ -476,62 +476,53 @@ async function handleRequestGameState(ws, payload) {
 }
 
 // Scribble Game Handlers
-async function handleDrawLine(ws, payload) {
-  const { roomCode, line } = payload;
-  broadcastToRoom(roomCode, {
-    type: 'DRAW_LINE',
-    payload: { line }
-  });
-}
-
-async function handleClearCanvas(ws, payload) {
-  const { roomCode } = payload;
-  broadcastToRoom(roomCode, {
-    type: 'CLEAR_CANVAS',
-    payload: {}
-  });
-}
-
-async function handleChatMessage(ws, payload) {
-  const { roomCode, username, message } = payload;
-  broadcastToRoom(roomCode, {
-    type: 'CHAT_MESSAGE',
-    payload: { username, message }
-  });
-}
-
 async function handleGuessWord(ws, payload) {
   try {
     const { roomCode, username, guess } = payload;
-    
-    const room = await GameRoom.findOne({ roomCode });
-    if (!room) return;
+    console.log('🎯 Guess received:', { roomCode, username, guess });
 
-    const result = handleGuess(room.gameState, username, guess);
-    
+    const room = await GameRoom.findOne({ roomCode });
+    if (!room || !room.gameState.scribble) {
+      console.error('❌ Room or game state not found');
+      return;
+    }
+
+    const result = handleGuess(room.gameState.scribble, username, guess);
+
     if (result.correct) {
-      room.gameState = result.gameState;
+      // Save updated scores
       await room.save();
 
+      // Broadcast correct guess to all players
       broadcastToRoom(roomCode, {
         type: 'CORRECT_GUESS',
-        payload: { username, gameState: result.gameState }
+        username,
+        points: result.points,
+        gameState: room.gameState.scribble
       });
 
-      if (result.gameState.allGuessed) {
-        broadcastToRoom(roomCode, {
-          type: 'ROUND_COMPLETE',
-          payload: { gameState: result.gameState }
-        });
-      }
+      console.log('✅ Correct guess broadcast:', { username, points: result.points });
     } else {
-      broadcastToRoom(roomCode, {
-        type: 'CHAT_MESSAGE',
-        payload: { username, message: guess }
-      });
+      // Broadcast the guess as a chat message (wrong guess)
+      if (result.message && result.message !== 'You cannot guess your own drawing!' && result.message !== 'You already guessed!') {
+        broadcastToRoom(roomCode, {
+          type: 'CHAT_MESSAGE',
+          username,
+          message: result.message
+        });
+      } else if (result.message) {
+        // Send error only to the guesser
+        ws.send(JSON.stringify({
+          type: 'CHAT_MESSAGE',
+          username: 'System',
+          message: result.message,
+          isSystem: true
+        }));
+      }
     }
+
   } catch (error) {
-    console.error('Error in handleGuessWord:', error);
+    console.error('❌ Error in handleGuessWord:', error);
   }
 }
 
@@ -704,42 +695,77 @@ async function handleRequestHand(ws, payload) {
 async function handleSelectWord(ws, payload) {
   try {
     const { roomCode, word } = payload;
-    
-    console.log(`📝 SELECT_WORD received for room ${roomCode}, word: ${word}`);
-    
-    const room = await GameRoom.findOne({ roomCode, isActive: true });
-    if (!room) {
-      console.error('❌ Room not found');
-      ws.send(JSON.stringify({ type: 'ERROR', payload: { message: 'Room not found' } }));
+    console.log('📝 Word selected:', { roomCode, word });
+
+    const room = await GameRoom.findOne({ roomCode });
+    if (!room || !room.gameState.scribble) {
+      console.error('❌ Room or scribble state not found');
       return;
     }
 
-    if (!room.gameState) {
-      console.error('❌ No game state');
-      ws.send(JSON.stringify({ type: 'ERROR', payload: { message: 'No active game' } }));
-      return;
-    }
-
-    const { selectWord } = require('./controllers/scribbleGame');
-    const result = selectWord(room.gameState, word);
+    // Update game state with selected word
+    room.gameState.scribble.currentWord = word;
+    room.gameState.scribble.drawingStarted = true;
+    room.gameState.scribble.wordOptions = [];
+    room.gameState.scribble.drawingStartTime = Date.now();
     
-    if (result.success) {
-      room.gameState = result.gameState;
-      await room.save();
+    await room.save();
 
-      console.log('✅ Word selected, broadcasting to room');
-      
-      broadcastToRoom(roomCode, {
-        type: 'WORD_SELECTED',
-        payload: { gameState: result.gameState }
-      });
-    } else {
-      console.error('❌ Word selection failed:', result.message);
-      ws.send(JSON.stringify({ type: 'ERROR', payload: { message: result.message } }));
-    }
+    console.log('✅ Word selected and saved:', word);
+
+    // Broadcast to all players that word was selected
+    broadcastToRoom(roomCode, {
+      type: 'WORD_SELECTED',
+      gameState: room.gameState.scribble
+    });
+
   } catch (error) {
     console.error('❌ Error in handleSelectWord:', error);
-    ws.send(JSON.stringify({ type: 'ERROR', payload: { message: error.message } }));
+  }
+}
+
+async function handleDrawLine(ws, payload) {
+  try {
+    const { roomCode, line } = payload;
+    
+    // Broadcast the line to all OTHER users in the room (not the sender)
+    const users = roomConnections.get(roomCode);
+    if (!users) return;
+
+    users.forEach(username => {
+      const userWs = clients.get(username);
+      if (userWs && userWs !== ws && userWs.readyState === WebSocket.OPEN) {
+        userWs.send(JSON.stringify({
+          type: 'DRAW_LINE',
+          line: line
+        }));
+      }
+    });
+
+  } catch (error) {
+    console.error('❌ Error in handleDrawLine:', error);
+  }
+}
+
+async function handleClearCanvas(ws, payload) {
+  try {
+    const { roomCode } = payload;
+    
+    // Broadcast clear to all OTHER users in the room
+    const users = roomConnections.get(roomCode);
+    if (!users) return;
+
+    users.forEach(username => {
+      const userWs = clients.get(username);
+      if (userWs && userWs !== ws && userWs.readyState === WebSocket.OPEN) {
+        userWs.send(JSON.stringify({
+          type: 'CLEAR_CANVAS'
+        }));
+      }
+    });
+
+  } catch (error) {
+    console.error('❌ Error in handleClearCanvas:', error);
   }
 }
 

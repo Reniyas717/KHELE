@@ -48,86 +48,91 @@ function initScribbleGame(players) {
   return gameState;
 }
 
-function selectWord(gameState, word) {
-  console.log('📝 selectWord called with word:', word);
-  console.log('📋 Available word options:', gameState.wordOptions);
-  
-  if (!gameState.wordOptions || !gameState.wordOptions.includes(word)) {
-    console.error('❌ Invalid word selection:', word);
-    return { success: false, message: 'Invalid word selection' };
-  }
-  
-  gameState.currentWord = word;
-  gameState.drawingStarted = true;
-  gameState.wordOptions = [];
-  
-  console.log('✅ Word selected successfully:', word);
-  console.log('🎨 Drawing started');
-  
-  return {
-    success: true,
-    gameState,
-    message: `Word selected: ${word}`
-  };
-}
-
 function handleGuess(gameState, username, guess) {
+  console.log('🔍 Processing guess:', { username, guess, currentWord: gameState.currentWord });
+
+  // Don't let drawer guess
   const player = gameState.players.find(p => p.username === username);
-  
   if (!player) {
-    return { correct: false, message: 'Player not found' };
+    console.log('❌ Player not found');
+    return { correct: false };
   }
-  
+
   if (username === gameState.currentDrawer) {
-    return { correct: false, message: 'Drawer cannot guess' };
+    console.log('❌ Drawer cannot guess');
+    return { correct: false, message: 'You cannot guess your own drawing!' };
   }
-  
+
+  // Check if already guessed
   if (player.hasGuessed) {
-    return { correct: false, message: 'Already guessed' };
+    console.log('❌ Player already guessed');
+    return { correct: false, message: 'You already guessed!' };
   }
-  
+
+  // Check if guess is correct (case insensitive)
   const isCorrect = guess.toLowerCase().trim() === gameState.currentWord.toLowerCase().trim();
   
   if (isCorrect) {
-    player.hasGuessed = true;
-    player.score += 100;
+    console.log('✅ Correct guess!');
     
-    // Award points to drawer
+    // Calculate points based on how many have guessed
+    const guessedCount = gameState.players.filter(p => p.hasGuessed).length;
+    const basePoints = 100;
+    const points = Math.max(basePoints - (guessedCount * 20), 20); // First: 100, Second: 80, Third: 60, etc., min 20
+    
+    // Award points to guesser
+    player.score += points;
+    player.hasGuessed = true;
+
+    // Award points to drawer (50 points per correct guess)
     const drawer = gameState.players.find(p => p.username === gameState.currentDrawer);
     if (drawer) {
       drawer.score += 50;
     }
+
+    // Check if everyone guessed
+    const nonDrawerPlayers = gameState.players.filter(p => p.username !== gameState.currentDrawer);
+    const allGuessed = nonDrawerPlayers.every(p => p.hasGuessed);
     
-    // Check if all players have guessed
-    const allGuessed = gameState.players.every(p => 
-      p.username === gameState.currentDrawer || p.hasGuessed
-    );
-    
-    gameState.allGuessed = allGuessed;
-    
-    return {
-      correct: true,
-      gameState,
-      message: `${username} guessed correctly!`
+    if (allGuessed) {
+      gameState.allGuessed = true;
+      console.log('🎉 Everyone guessed!');
+    }
+
+    return { 
+      correct: true, 
+      points, 
+      allGuessed,
+      gameState 
     };
   }
-  
-  return { correct: false, message: 'Wrong guess' };
+
+  console.log('❌ Incorrect guess');
+  return { 
+    correct: false, 
+    message: guess // Send back the guess for chat display
+  };
 }
 
 function nextRound(gameState) {
-  // Move to next drawer
-  gameState.currentDrawerIndex = (gameState.currentDrawerIndex + 1) % gameState.players.length;
+  console.log('➡️ Moving to next round');
   
-  // Check if round is complete
-  if (gameState.currentDrawerIndex === 0) {
-    gameState.round++;
+  // Reset hasGuessed for all players
+  gameState.players.forEach(p => p.hasGuessed = false);
+  
+  // Move to next drawer
+  const currentIndex = gameState.players.findIndex(p => p.username === gameState.currentDrawer);
+  const nextIndex = (currentIndex + 1) % gameState.players.length;
+  
+  // If we've gone through all players, increment round
+  if (nextIndex === 0) {
+    gameState.round += 1;
   }
   
   // Check if game is over
   if (gameState.round > gameState.maxRounds) {
-    const winner = gameState.players.reduce((prev, current) => 
-      (prev.score > current.score) ? prev : current
+    const winner = gameState.players.reduce((max, p) => 
+      p.score > max.score ? p : max
     );
     
     return {
@@ -140,28 +145,28 @@ function nextRound(gameState) {
     };
   }
   
-  // Reset for next round
-  gameState.players.forEach(p => p.hasGuessed = false);
-  gameState.currentDrawer = gameState.players[gameState.currentDrawerIndex].username;
-  gameState.wordOptions = getRandomWords(3);
+  // Set new drawer
+  gameState.currentDrawer = gameState.players[nextIndex].username;
   gameState.currentWord = null;
-  gameState.allGuessed = false;
   gameState.drawingStarted = false;
-  gameState.timeLeft = 90;
+  gameState.allGuessed = false;
+  gameState.wordOptions = getRandomWords(3);
   
-  console.log('🔄 Next round initialized');
-  console.log('👤 New drawer:', gameState.currentDrawer);
-  console.log('📝 New word options:', gameState.wordOptions);
-  
-  return {
-    gameOver: false,
-    gameState
-  };
+  return { gameState };
+}
+
+function selectWord(gameState, word) {
+  console.log('📝 Word selected:', word);
+  gameState.currentWord = word;
+  gameState.drawingStarted = true;
+  gameState.wordOptions = [];
+  return gameState;
 }
 
 module.exports = {
   initScribbleGame,
-  selectWord,
   handleGuess,
-  nextRound
+  nextRound,
+  selectWord,
+  getRandomWords
 };
