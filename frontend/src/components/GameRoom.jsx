@@ -7,92 +7,117 @@ export default function GameRoom({ roomCode, username, initialRoomData, preSelec
   const [room, setRoom] = useState(initialRoomData);
   const [gameStarted, setGameStarted] = useState(false);
   const [currentGame, setCurrentGame] = useState(preSelectedGame || null);
+  const [initialGameState, setInitialGameState] = useState(null);
   const { connect, disconnect, sendMessage, on, isConnected } = useWebSocket();
   const hasJoined = useRef(false);
   const cleanupDone = useRef(false);
+  const listenersSetup = useRef(false);
 
   // Setup WebSocket listeners once
   useEffect(() => {
-    console.log('🔧 Setting up GameRoom for', roomCode);
+    if (listenersSetup.current) {
+      console.log('⚠️ Listeners already setup');
+      return;
+    }
+    listenersSetup.current = true;
+
+    console.log(`\n🔧 Setting up GameRoom listeners`);
+    console.log(`👤 User: ${username}`);
+    console.log(`🏠 Room: ${roomCode}\n`);
     
-    // Connect WebSocket
     connect();
 
-    // Set up message listeners
     const unsubscribePlayerJoined = on('PLAYER_JOINED', (payload) => {
-      console.log('👥 Player joined:', payload);
+      console.log('👥 PLAYER_JOINED event:', payload.username);
+      console.log('📋 New player list:', payload.players.map(p => p.username));
+      
+      setRoom(prevRoom => {
+        const newRoom = {
+          ...prevRoom,
+          players: payload.players
+        };
+        console.log('✅ Room updated with new players');
+        return newRoom;
+      });
+    });
+
+    const unsubscribePlayerLeft = on('PLAYER_LEFT', (payload) => {
+      console.log('👋 PLAYER_LEFT event:', payload.username);
       setRoom(prevRoom => ({
         ...prevRoom,
         players: payload.players
       }));
     });
 
-    const unsubscribePlayerLeft = on('PLAYER_LEFT', (payload) => {
-      console.log('👋 Player left:', payload);
-      setRoom(prevRoom => ({
-        ...prevRoom,
-        players: prevRoom.players?.filter(p => p.username !== payload.username) || []
-      }));
-    });
-
     const unsubscribeGameStarted = on('GAME_STARTED', (payload) => {
-      console.log('🎮 Game started:', payload);
-      setCurrentGame(payload.gameType);
-      setGameStarted(true);
-      // Don't disconnect here - let the game component handle it
+      console.log('\n🎮 GAME_STARTED event received!');
+      console.log('📦 Game type:', payload.gameType);
+      console.log('📦 Has game state:', !!payload.gameState);
+      
+      if (payload.gameState) {
+        setCurrentGame(payload.gameType);
+        setInitialGameState(payload.gameState);
+        setGameStarted(true);
+        console.log('✅ Game initialized successfully\n');
+      } else {
+        console.error('❌ No game state in payload\n');
+      }
     });
 
     const unsubscribeJoinedRoom = on('JOINED_ROOM', (payload) => {
-      console.log('✅ Joined room:', payload);
+      console.log('✅ JOINED_ROOM confirmation received');
+      console.log('📋 Room players:', payload.room.players.map(p => p.username));
       setRoom(payload.room);
     });
 
     const unsubscribeRoomUpdate = on('ROOM_UPDATE', (payload) => {
-      console.log('🔄 Room updated:', payload);
+      console.log('🔄 ROOM_UPDATE event');
+      console.log('📋 Updated players:', payload.room.players.map(p => p.username));
       setRoom(payload.room);
     });
 
-    // Cleanup function
     return () => {
-      if (!cleanupDone.current) {
-        console.log('🧹 Cleaning up GameRoom');
-        if (hasJoined.current) {
-          sendMessage('LEAVE_ROOM', { roomCode, username });
-        }
-        unsubscribePlayerJoined();
-        unsubscribePlayerLeft();
-        unsubscribeGameStarted();
-        unsubscribeJoinedRoom();
-        unsubscribeRoomUpdate();
+      console.log('🧹 Cleaning up GameRoom');
+      if (hasJoined.current && !cleanupDone.current) {
+        sendMessage('LEAVE_ROOM', { roomCode, username });
         cleanupDone.current = true;
       }
+      unsubscribePlayerJoined();
+      unsubscribePlayerLeft();
+      unsubscribeGameStarted();
+      unsubscribeJoinedRoom();
+      unsubscribeRoomUpdate();
+      listenersSetup.current = false;
     };
-  }, []); // Empty array - only run once
+  }, []);
 
   // Join room when connected
   useEffect(() => {
     if (isConnected && !hasJoined.current) {
-      console.log('🚪 Joining room:', roomCode, 'as', username);
+      console.log(`🚪 Joining room ${roomCode} as ${username}`);
       sendMessage('JOIN_ROOM', { roomCode, username });
       hasJoined.current = true;
     }
   }, [isConnected]);
 
-  // Auto-start game when conditions met (only for host)
+  // Auto-start game
   useEffect(() => {
     const shouldAutoStart = 
       preSelectedGame && 
       room?.players?.length >= 2 && 
       !gameStarted && 
       room?.host === username &&
-      isConnected; // Add this check
+      isConnected;
 
     if (shouldAutoStart) {
-      console.log('🚀 Auto-starting game in 3 seconds...');
+      console.log('\n🚀 Auto-starting game...');
+      console.log('👥 Players:', room.players.map(p => p.username));
+      
       const timer = setTimeout(() => {
-        console.log('🎮 Auto-start triggered');
+        console.log('🎮 Triggering START_GAME');
         handleStartGame();
-      }, 3000); // Increased to 3 seconds to ensure all players connected
+      }, 2000);
+      
       return () => clearTimeout(timer);
     }
   }, [room?.players?.length, gameStarted, isConnected]);
@@ -109,45 +134,53 @@ export default function GameRoom({ roomCode, username, initialRoomData, preSelec
       return;
     }
 
-    console.log('🎮 Starting game:', gameType);
-    sendMessage('START_GAME', { roomCode, gameType });
-    setGameStarted(true);
+    console.log(`\n🎮 Starting game: ${gameType}`);
+    console.log(`👥 Players: ${room.players.map(p => p.username).join(', ')}\n`);
+    
+    sendMessage('START_GAME', { roomCode, gameType, username });
   };
 
   const handleLeaveRoom = () => {
     console.log('👋 Leaving room');
-    if (hasJoined.current) {
+    if (hasJoined.current && !cleanupDone.current) {
       sendMessage('LEAVE_ROOM', { roomCode, username });
       hasJoined.current = false;
+      cleanupDone.current = true;
     }
-    cleanupDone.current = true;
+    disconnect();
     onLeaveRoom();
   };
 
-  // If game has started, render the game component
-  if (gameStarted && currentGame === 'scribble') {
-    return (
-      <ScribbleGame
-        roomCode={roomCode}
-        username={username}
-        players={room?.players || []}
-        onLeaveRoom={handleLeaveRoom}
-      />
-    );
+  // Render game if started
+  if (gameStarted && initialGameState) {
+    console.log(`🎯 Rendering ${currentGame} game`);
+    
+    if (currentGame === 'scribble') {
+      return (
+        <ScribbleGame
+          roomCode={roomCode}
+          username={username}
+          players={room?.players || []}
+          initialGameState={initialGameState}
+          onLeaveRoom={handleLeaveRoom}
+        />
+      );
+    }
+
+    if (currentGame === 'uno') {
+      return (
+        <UNOGame
+          roomCode={roomCode}
+          username={username}
+          players={room?.players || []}
+          initialGameState={initialGameState}
+          onLeaveRoom={handleLeaveRoom}
+        />
+      );
+    }
   }
 
-  if (gameStarted && currentGame === 'uno') {
-    return (
-      <UNOGame
-        roomCode={roomCode}
-        username={username}
-        players={room?.players || []}
-        onLeaveRoom={handleLeaveRoom}
-      />
-    );
-  }
-
-  // Waiting room / Game selection
+  // Waiting room
   const isHost = room?.host === username;
   const canStart = room?.players?.length >= 2;
 
@@ -161,7 +194,7 @@ export default function GameRoom({ roomCode, username, initialRoomData, preSelec
               Game Room
             </h1>
             <p className="text-gray-600 mt-1">
-              {isHost ? '🎮 You are the host' : `👤 Host: ${room?.host || 'Loading...'}`}
+              {isHost ? '🎮 You are the host' : `👤 Host: ${room?.host}`}
             </p>
           </div>
           <button
@@ -172,7 +205,7 @@ export default function GameRoom({ roomCode, username, initialRoomData, preSelec
           </button>
         </div>
 
-        {/* Room Code Display */}
+        {/* Room Code */}
         {preSelectedGame && (
           <div className="bg-gradient-to-r from-purple-500 to-pink-500 rounded-2xl p-8 mb-8 text-center">
             <h2 className="text-white text-2xl font-semibold mb-4">
@@ -191,9 +224,9 @@ export default function GameRoom({ roomCode, username, initialRoomData, preSelec
 
         {/* Connection Status */}
         <div className="mb-6">
-          <div className="flex items-center gap-2 mb-2">
+          <div className="flex items-center gap-2">
             <div className={`w-3 h-3 rounded-full ${isConnected ? 'bg-green-500' : 'bg-yellow-500'} animate-pulse`}></div>
-            <span className="text-sm text-gray-600">
+            <span className="text-sm font-semibold text-gray-700">
               {isConnected ? '✅ Connected' : '⏳ Connecting...'}
             </span>
           </div>
@@ -212,10 +245,10 @@ export default function GameRoom({ roomCode, username, initialRoomData, preSelec
               >
                 <div className="flex items-center gap-3">
                   <div className="w-10 h-10 bg-purple-500 rounded-full flex items-center justify-center text-white font-bold">
-                    {player.username ? player.username[0].toUpperCase() : '?'}
+                    {player.username?.[0]?.toUpperCase() || '?'}
                   </div>
                   <span className="font-semibold text-gray-800">
-                    {player.username || 'Loading...'}
+                    {player.username}
                     {player.username === room.host && (
                       <span className="ml-2 text-xs bg-yellow-400 text-yellow-900 px-2 py-1 rounded-full">
                         HOST
@@ -241,12 +274,12 @@ export default function GameRoom({ roomCode, username, initialRoomData, preSelec
               ⏳ Waiting for at least 2 players to join...
             </p>
             <p className="text-sm mt-1">
-              Share the room code <span className="font-mono font-bold">{roomCode}</span> with your friends!
+              Share the room code <span className="font-mono font-bold">{roomCode}</span>
             </p>
           </div>
         )}
 
-        {/* Start Game Button (Host Only) */}
+        {/* Start Button */}
         {isHost && (currentGame || preSelectedGame) && !gameStarted && (
           <button
             onClick={handleStartGame}
@@ -257,11 +290,11 @@ export default function GameRoom({ roomCode, username, initialRoomData, preSelec
                 : 'bg-gray-300 text-gray-500 cursor-not-allowed'
             }`}
           >
-            {!isConnected ? '⏳ Connecting...' : canStart ? '🎮 Start Game' : '⏳ Waiting for more players...'}
+            {!isConnected ? '⏳ Connecting...' : canStart ? '🎮 Start Game' : '⏳ Waiting...'}
           </button>
         )}
 
-        {/* Waiting for host message */}
+        {/* Waiting for host */}
         {!isHost && canStart && !gameStarted && (
           <div className="bg-blue-100 border border-blue-400 text-blue-800 px-6 py-4 rounded-lg text-center">
             <p className="font-semibold">

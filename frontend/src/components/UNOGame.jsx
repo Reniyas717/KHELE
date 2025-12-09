@@ -1,19 +1,37 @@
 import { useState, useEffect, useRef } from 'react';
 import { useWebSocket } from '../context/WebSocketContext';
 
-export default function UNOGame({ roomCode, username, players, onLeaveRoom }) {
-  const [gameState, setGameState] = useState(null);
+export default function UNOGame({ roomCode, username, players, initialGameState, onLeaveRoom }) {
+  const [gameState, setGameState] = useState(initialGameState);
   const [selectedCard, setSelectedCard] = useState(null);
   const [showColorPicker, setShowColorPicker] = useState(false);
   const [myHand, setMyHand] = useState([]);
-  const { sendMessage, on } = useWebSocket();
+  const { sendMessage, on, isConnected } = useWebSocket();
+  const setupComplete = useRef(false);
+
+  // Update game state when initialGameState prop changes
+  useEffect(() => {
+    if (initialGameState && !gameState) {
+      console.log('📦 Received initial UNO game state from props:', initialGameState);
+      setGameState(initialGameState);
+      requestHand();
+    }
+  }, [initialGameState]);
 
   useEffect(() => {
+    if (setupComplete.current) return;
+    setupComplete.current = true;
+
+    console.log('🃏 UNOGame mounted for room:', roomCode, 'user:', username);
+    console.log('📦 Initial game state on mount:', initialGameState);
+
     // Listen for game updates
     const unsubscribeGameStarted = on('GAME_STARTED', (payload) => {
       console.log('🎮 UNO Game started:', payload);
-      setGameState(payload.gameState);
-      requestHand();
+      if (payload.gameState && payload.gameType === 'uno') {
+        setGameState(payload.gameState);
+        requestHand();
+      }
     });
 
     const unsubscribeCardPlayed = on('CARD_PLAYED', (payload) => {
@@ -38,19 +56,30 @@ export default function UNOGame({ roomCode, username, players, onLeaveRoom }) {
       alert(`${payload.winner} wins!`);
     });
 
-    // Request initial hand
-    requestHand();
+    // Request initial hand if we have game state
+    if (initialGameState) {
+      requestHand();
+    } else {
+      // Request game state as fallback
+      setTimeout(() => {
+        if (!gameState) {
+          sendMessage('REQUEST_GAME_STATE', { roomCode });
+        }
+      }, 1000);
+    }
 
     return () => {
+      console.log('🧹 Cleaning up UNOGame');
       unsubscribeGameStarted();
       unsubscribeCardPlayed();
       unsubscribeCardDrawn();
       unsubscribeYourHand();
       unsubscribeGameOver();
     };
-  }, [roomCode, username]);
+  }, []);
 
   const requestHand = () => {
+    console.log('🤚 Requesting hand for', username);
     sendMessage('REQUEST_HAND', { roomCode, username });
   };
 
@@ -90,6 +119,17 @@ export default function UNOGame({ roomCode, username, players, onLeaveRoom }) {
           <div className="animate-spin rounded-full h-16 w-16 border-b-4 border-red-500 mx-auto mb-4"></div>
           <h2 className="text-2xl font-bold text-gray-800">Loading UNO Game...</h2>
           <p className="text-gray-600 mt-2">Please wait while we set up the game</p>
+          <div className="mt-6 bg-gray-100 rounded-lg p-4 text-left text-sm">
+            <p className="text-gray-700"><span className="font-semibold">Room:</span> {roomCode}</p>
+            <p className="text-gray-700"><span className="font-semibold">Player:</span> {username}</p>
+            <p className="text-gray-700 mt-2">
+              <span className={`inline-block w-2 h-2 rounded-full mr-2 ${isConnected ? 'bg-green-500' : 'bg-red-500'}`}></span>
+              {isConnected ? 'Connected' : 'Connecting...'}
+            </p>
+            <p className="text-xs text-gray-500 mt-2">
+              Initial state: {initialGameState ? '✅ Present' : '❌ Missing'}
+            </p>
+          </div>
         </div>
       </div>
     );
@@ -247,7 +287,7 @@ export default function UNOGame({ roomCode, username, players, onLeaveRoom }) {
                     onClick={() => handleColorChoice(color)}
                     className={`w-24 h-24 rounded-xl ${getCardColor({ color })} border-4 border-white shadow-lg hover:scale-110 transition-transform`}
                   >
-                    <span className="text-white text-sm capitalize">{color}</span>
+                    <span className="text-white text-sm capitalize font-bold">{color}</span>
                   </button>
                 ))}
               </div>
