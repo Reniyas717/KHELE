@@ -344,7 +344,9 @@ async function handleStartGame(ws, payload) {
   try {
     const { roomCode, gameType } = payload;
     
-    console.log(`\n🎮 Starting ${gameType} game in room ${roomCode}`);
+    console.log(`\n🎮 ========== STARTING GAME ==========`);
+    console.log(`🏠 Room: ${roomCode}`);
+    console.log(`🎯 Game Type: ${gameType}`);
     
     const room = await GameRoom.findOne({ roomCode, isActive: true });
     if (!room) {
@@ -368,19 +370,21 @@ async function handleStartGame(ws, payload) {
       room.gameState = gameState;
       room.currentGame = 'scribble';
       console.log('✅ Scribble game initialized');
-      console.log('📦 Current drawer:', gameState.currentDrawer);
     } else if (gameType === 'uno') {
       gameState = initUNOGame(room.players.map(p => p.username));
       room.gameState = gameState;
       room.currentGame = 'uno';
       console.log('✅ UNO game initialized');
-      console.log('📦 Current player:', gameState.players[gameState.currentPlayerIndex].name);
+      console.log('🃏 Verifying all players have cards:');
+      gameState.players.forEach(p => {
+        console.log(`   - ${p.name}: ${p.hand.length} cards`);
+      });
     }
 
     await room.save();
     console.log('💾 Game state saved to database');
     
-    // Create the payload
+    // Broadcast game started to ALL players
     const gameStartPayload = {
       type: 'GAME_STARTED',
       payload: { 
@@ -389,32 +393,48 @@ async function handleStartGame(ws, payload) {
       }
     };
 
-    console.log(`📢 Broadcasting GAME_STARTED to all players`);
+    console.log(`📢 Broadcasting GAME_STARTED to all players in room ${roomCode}`);
     
-    // Get all users in the room
     const users = roomConnections.get(roomCode);
     if (!users || users.size === 0) {
       console.error(`❌ No connected users found in room ${roomCode}`);
       return;
     }
 
-    console.log(`👥 Connected users in room:`, Array.from(users));
+    console.log(`👥 Broadcasting to ${users.size} users:`, Array.from(users));
 
-    // Broadcast to all users with confirmation
-    let sentCount = 0;
-    users.forEach(username => {
-      const userWs = clients.get(username);
-      if (userWs && userWs.readyState === WebSocket.OPEN) {
-        userWs.send(JSON.stringify(gameStartPayload));
-        console.log(`  ✅ Sent GAME_STARTED to ${username}`);
-        sentCount++;
+    // Send to each player individually and confirm
+    let successCount = 0;
+    for (const playerUsername of users) {
+      const playerWs = clients.get(playerUsername);
+      if (playerWs && playerWs.readyState === WebSocket.OPEN) {
+        try {
+          playerWs.send(JSON.stringify(gameStartPayload));
+          console.log(`  ✅ Sent to ${playerUsername}`);
+          successCount++;
+          
+          // For UNO, also send individual hand
+          if (gameType === 'uno') {
+            const player = gameState.players.find(p => p.name === playerUsername);
+            if (player && player.hand) {
+              const handPayload = {
+                type: 'YOUR_HAND',
+                payload: { hand: player.hand, playerName: playerUsername }
+              };
+              playerWs.send(JSON.stringify(handPayload));
+              console.log(`  🃏 Sent ${player.hand.length} cards to ${playerUsername}`);
+            }
+          }
+        } catch (error) {
+          console.error(`  ❌ Failed to send to ${playerUsername}:`, error.message);
+        }
       } else {
-        console.error(`  ❌ Failed to send to ${username} - connection not ready`);
+        console.error(`  ❌ Connection not ready for ${playerUsername}`);
       }
-    });
+    }
 
-    console.log(`📊 GAME_STARTED sent to ${sentCount}/${users.size} players`);
-    console.log(`✅ Game started successfully in room ${roomCode}\n`);
+    console.log(`📊 Broadcast complete: ${successCount}/${users.size} successful`);
+    console.log('========================================\n');
   } catch (error) {
     console.error('❌ Error in handleStartGame:', error);
     ws.send(JSON.stringify({ type: 'ERROR', payload: { message: error.message } }));
@@ -613,16 +633,28 @@ async function handleRequestHand(ws, payload) {
     const room = await GameRoom.findOne({ roomCode, isActive: true });
     if (!room) {
       console.error('❌ Room not found');
+      ws.send(JSON.stringify({ 
+        type: 'ERROR', 
+        payload: { message: 'Room not found' } 
+      }));
       return;
     }
 
     if (!room.gameState) {
       console.error('❌ No game state in room');
+      ws.send(JSON.stringify({ 
+        type: 'ERROR', 
+        payload: { message: 'No active game' } 
+      }));
       return;
     }
 
     if (!room.gameState.players) {
       console.error('❌ No players in game state');
+      ws.send(JSON.stringify({ 
+        type: 'ERROR', 
+        payload: { message: 'No players in game' } 
+      }));
       return;
     }
 
@@ -630,27 +662,42 @@ async function handleRequestHand(ws, payload) {
     if (!player) {
       console.error(`❌ Player ${username} not found in game`);
       console.log('📋 Available players:', room.gameState.players.map(p => p.name));
+      ws.send(JSON.stringify({ 
+        type: 'ERROR', 
+        payload: { message: 'Player not found in game' } 
+      }));
       return;
     }
 
-    if (!player.hand) {
-      console.error(`❌ Player ${username} has no hand!`);
+    if (!player.hand || !Array.isArray(player.hand)) {
+      console.error(`❌ Player ${username} has no hand or hand is not an array!`);
+      ws.send(JSON.stringify({ 
+        type: 'ERROR', 
+        payload: { message: 'Invalid hand data' } 
+      }));
       return;
     }
 
     console.log(`✅ Found player with ${player.hand.length} cards`);
-    console.log(`📋 Cards:`, player.hand.map(c => `${c.color || 'wild'} ${c.type} ${c.value !== undefined ? c.value : ''}`));
+    console.log(`📋 Sample cards:`, player.hand.slice(0, 3).map(c => `${c.color || 'wild'} ${c.type} ${c.value !== undefined ? c.value : ''}`));
 
     const response = {
       type: 'YOUR_HAND',
-      payload: { hand: player.hand }
+      payload: { 
+        hand: player.hand,
+        playerName: username
+      }
     };
 
     ws.send(JSON.stringify(response));
-    console.log(`✅ Sent hand to ${username}`);
+    console.log(`✅ Successfully sent ${player.hand.length} cards to ${username}`);
     console.log('===================================\n');
   } catch (error) {
     console.error('❌ Error in handleRequestHand:', error);
+    ws.send(JSON.stringify({ 
+      type: 'ERROR', 
+      payload: { message: 'Failed to get hand: ' + error.message } 
+    }));
   }
 }
 

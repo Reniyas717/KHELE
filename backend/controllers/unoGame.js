@@ -10,24 +10,34 @@ function initUNOGame(players) {
   console.log('\n🃏 ========== Initializing UNO Game ==========');
   console.log('👥 Players:', players);
   
+  if (!players || players.length < 2) {
+    console.error('❌ Need at least 2 players');
+    throw new Error('Need at least 2 players');
+  }
+
   // Create deck
   const deck = createDeck();
   console.log('📦 Created deck with', deck.length, 'cards');
   
-  // Shuffle deck
+  // Shuffle deck thoroughly
   shuffleDeck(deck);
+  shuffleDeck(deck); // Shuffle twice for better randomization
   console.log('🔀 Deck shuffled');
   
   // Deal 7 cards to each player
-  const gamePlayers = players.map(playerName => {
+  const gamePlayers = players.map((playerName, playerIndex) => {
     const hand = [];
     for (let i = 0; i < 7; i++) {
       if (deck.length > 0) {
         const card = deck.pop();
         hand.push(card);
+      } else {
+        console.error(`❌ Ran out of cards while dealing to ${playerName}`);
       }
     }
-    console.log(`🎴 ${playerName} received ${hand.length} cards`);
+    console.log(`🎴 Player ${playerIndex + 1}: ${playerName} received ${hand.length} cards`);
+    console.log(`   First 3 cards:`, hand.slice(0, 3).map(c => `${c.color || 'wild'} ${c.type} ${c.value !== undefined ? c.value : ''}`));
+    
     return {
       name: playerName,
       hand: hand,
@@ -38,22 +48,19 @@ function initUNOGame(players) {
   // Find a number card to start
   let topCard;
   let attempts = 0;
+  const maxAttempts = 50;
+  
   do {
-    if (deck.length === 0) {
-      console.error('❌ Ran out of cards looking for number card!');
+    if (deck.length === 0 || attempts >= maxAttempts) {
+      console.log('⚠️ Creating default starting card');
       topCard = { type: 'number', color: 'red', value: 5 };
       break;
     }
     topCard = deck.pop();
     attempts++;
-  } while (topCard.type !== 'number' && attempts < 50);
+  } while (topCard.type !== 'number');
   
-  if (topCard.type !== 'number') {
-    console.log('⚠️ No number card found, using default red 5');
-    topCard = { type: 'number', color: 'red', value: 5 };
-  }
-  
-  console.log('🎯 Starting card:', topCard);
+  console.log('🎯 Starting card:', `${topCard.color} ${topCard.type} ${topCard.value}`);
 
   const gameState = {
     players: gamePlayers,
@@ -65,13 +72,14 @@ function initUNOGame(players) {
     drawCount: 0
   };
 
-  console.log('✅ UNO game initialized');
-  console.log('📊 Final state:');
-  console.log('  - Players:', gamePlayers.map(p => `${p.name} (${p.hand.length} cards)`).join(', '));
-  console.log('  - Deck remaining:', deck.length);
-  console.log('  - Starting card:', `${topCard.color} ${topCard.type} ${topCard.value || ''}`);
-  console.log('  - Current player:', gamePlayers[0].name);
-  console.log('========================================\n');
+  console.log('✅ UNO game initialized successfully');
+  console.log('📊 Summary:');
+  gamePlayers.forEach((p, i) => {
+    console.log(`   ${i + 1}. ${p.name}: ${p.hand.length} cards`);
+  });
+  console.log(`   Deck remaining: ${deck.length} cards`);
+  console.log(`   Starting player: ${gamePlayers[0].name}`);
+  console.log('==========================================\n');
   
   return gameState;
 }

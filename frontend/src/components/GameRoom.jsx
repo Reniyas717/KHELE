@@ -42,8 +42,7 @@ export default function GameRoom({ roomCode, username, initialRoomData, preSelec
     });
 
     const unsubscribePlayerLeft = on('PLAYER_LEFT', (payload) => {
-      console.log('👋 PLAYER_LEFT event:', payload);
-      
+      console.log('👋 PLAYER_LEFT event:', payload.username);
       setRoom(prevRoom => {
         if (!prevRoom) return prevRoom;
         
@@ -106,28 +105,6 @@ export default function GameRoom({ roomCode, username, initialRoomData, preSelec
     }
   }, [isConnected]);
 
-  // Auto-start game
-  useEffect(() => {
-    const shouldAutoStart = 
-      preSelectedGame && 
-      room?.players?.length >= 2 && 
-      !gameStarted && 
-      room?.host === username &&
-      isConnected;
-
-    if (shouldAutoStart) {
-      console.log('\n🚀 Auto-starting game...');
-      console.log('👥 Players:', room.players.map(p => p.username));
-      
-      const timer = setTimeout(() => {
-        console.log('🎮 Triggering START_GAME');
-        handleStartGame();
-      }, 2000);
-      
-      return () => clearTimeout(timer);
-    }
-  }, [room?.players?.length, gameStarted, isConnected]);
-
   const handleStartGame = () => {
     if (room?.players?.length < 2) {
       alert('Need at least 2 players to start!');
@@ -140,7 +117,7 @@ export default function GameRoom({ roomCode, username, initialRoomData, preSelec
       return;
     }
 
-    console.log(`\n🎮 Starting game: ${gameType}`);
+    console.log(`\n🎮 Host starting game: ${gameType}`);
     console.log(`👥 Players: ${room.players.map(p => p.username).join(', ')}\n`);
     
     sendMessage('START_GAME', { roomCode, gameType, username });
@@ -285,7 +262,7 @@ export default function GameRoom({ roomCode, username, initialRoomData, preSelec
           </div>
         )}
 
-        {/* Start Button */}
+        {/* Start Button - ONLY SHOWS FOR HOST */}
         {isHost && (currentGame || preSelectedGame) && !gameStarted && (
           <button
             onClick={handleStartGame}
@@ -296,7 +273,7 @@ export default function GameRoom({ roomCode, username, initialRoomData, preSelec
                 : 'bg-gray-300 text-gray-500 cursor-not-allowed'
             }`}
           >
-            {!isConnected ? '⏳ Connecting...' : canStart ? '🎮 Start Game' : '⏳ Waiting...'}
+            {!isConnected ? '⏳ Connecting...' : canStart ? '🎮 Start Game' : '⏳ Need 2+ Players'}
           </button>
         )}
 
@@ -304,7 +281,7 @@ export default function GameRoom({ roomCode, username, initialRoomData, preSelec
         {!isHost && canStart && !gameStarted && (
           <div className="bg-blue-100 border border-blue-400 text-blue-800 px-6 py-4 rounded-lg text-center">
             <p className="font-semibold">
-              ⏳ Waiting for host to start the game...
+              ⏳ Waiting for {room?.host} to start the game...
             </p>
           </div>
         )}

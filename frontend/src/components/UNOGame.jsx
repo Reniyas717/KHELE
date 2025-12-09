@@ -2,61 +2,111 @@ import { useState, useEffect, useRef } from 'react';
 import { useWebSocket } from '../context/WebSocketContext';
 
 export default function UNOGame({ roomCode, username, players, initialGameState, onLeaveRoom }) {
-  const [gameState, setGameState] = useState(initialGameState);
+  const [gameState, setGameState] = useState(null);
   const [myHand, setMyHand] = useState([]);
   const [selectedCard, setSelectedCard] = useState(null);
   const [showColorPicker, setShowColorPicker] = useState(false);
   const { sendMessage, on, isConnected } = useWebSocket();
   const setupComplete = useRef(false);
-  const handRequested = useRef(false);
+  const handRequestTimer = useRef(null);
 
-  // Update game state and request hand
+  // Initialize game state and extract hand immediately
   useEffect(() => {
     if (initialGameState) {
-      console.log('📦 Setting initial game state for UNO');
+      console.log('\n🃏 ========== UNO GAME INITIALIZED ==========');
+      console.log('📦 Initial game state received');
+      console.log('👤 My username:', username);
+      
       setGameState(initialGameState);
       
-      // Request hand immediately
-      if (!handRequested.current && isConnected) {
-        console.log('🤚 Requesting hand immediately');
-        requestHand();
-        handRequested.current = true;
+      // Extract MY hand from the game state
+      if (initialGameState.players && Array.isArray(initialGameState.players)) {
+        console.log('👥 All players in game state:', initialGameState.players.map(p => p.name));
+        
+        const myPlayer = initialGameState.players.find(p => p.name === username);
+        if (myPlayer) {
+          console.log(`✅ Found myself in players list: ${myPlayer.name}`);
+          if (myPlayer.hand && Array.isArray(myPlayer.hand) && myPlayer.hand.length > 0) {
+            console.log(`🎴 Found my hand: ${myPlayer.hand.length} cards`);
+            console.log('🃏 Sample cards:', myPlayer.hand.slice(0, 3).map(c => `${c.color || 'wild'} ${c.type} ${c.value ?? ''}`));
+            setMyHand(myPlayer.hand);
+          } else {
+            console.log('⚠️ My hand is empty or invalid, will request');
+          }
+        } else {
+          console.error('❌ Could not find myself in players list!');
+          console.log('Available players:', initialGameState.players.map(p => p.name));
+        }
+      } else {
+        console.error('❌ No players array in initial game state');
       }
+      
+      console.log('==========================================\n');
     }
-  }, [initialGameState, isConnected]);
+  }, [initialGameState, username]);
 
+  // Setup WebSocket listeners
   useEffect(() => {
     if (setupComplete.current) return;
     setupComplete.current = true;
 
-    console.log('🃏 UNOGame mounted for', username);
+    console.log('🔧 Setting up UNO WebSocket listeners');
 
     const unsubscribeGameStarted = on('GAME_STARTED', (payload) => {
-      console.log('🎮 GAME_STARTED received:', payload);
+      console.log('\n🎮 GAME_STARTED event received');
       if (payload.gameState && payload.gameType === 'uno') {
+        console.log('📦 Setting game state');
         setGameState(payload.gameState);
-        // Request hand after game starts
-        setTimeout(() => {
-          requestHand();
-        }, 500);
+        
+        // Extract hand from game state
+        const myPlayer = payload.gameState.players?.find(p => p.name === username);
+        if (myPlayer && myPlayer.hand) {
+          console.log(`✅ Found my hand: ${myPlayer.hand.length} cards`);
+          setMyHand(myPlayer.hand);
+        }
       }
     });
 
     const unsubscribeYourHand = on('YOUR_HAND', (payload) => {
-      console.log('🤚 YOUR_HAND received:', payload.hand.length, 'cards');
-      setMyHand(payload.hand);
+      console.log('\n🤚 YOUR_HAND event received');
+      console.log('👤 For player:', payload.playerName);
+      console.log('🎴 Cards count:', payload.hand?.length || 0);
+      
+      // Only update if this message is for me
+      if (payload.playerName === username || !payload.playerName) {
+        if (payload.hand && Array.isArray(payload.hand)) {
+          console.log('✅ Updating my hand with', payload.hand.length, 'cards');
+          setMyHand(payload.hand);
+        }
+      } else {
+        console.log('⚠️ This hand is for someone else, ignoring');
+      }
     });
 
     const unsubscribeCardPlayed = on('CARD_PLAYED', (payload) => {
-      console.log('🃏 Card played');
-      setGameState(payload.gameState);
-      requestHand();
+      console.log('🃏 CARD_PLAYED event');
+      if (payload.gameState) {
+        setGameState(payload.gameState);
+        
+        // Update hand from game state
+        const myPlayer = payload.gameState.players?.find(p => p.name === username);
+        if (myPlayer && myPlayer.hand) {
+          setMyHand(myPlayer.hand);
+        }
+      }
     });
 
     const unsubscribeCardDrawn = on('CARD_DRAWN', (payload) => {
-      console.log('📥 Card drawn');
-      setGameState(payload.gameState);
-      requestHand();
+      console.log('📥 CARD_DRAWN event');
+      if (payload.gameState) {
+        setGameState(payload.gameState);
+        
+        // Update hand from game state
+        const myPlayer = payload.gameState.players?.find(p => p.name === username);
+        if (myPlayer && myPlayer.hand) {
+          setMyHand(myPlayer.hand);
+        }
+      }
     });
 
     const unsubscribeGameOver = on('GAME_OVER', (payload) => {
@@ -67,39 +117,78 @@ export default function UNOGame({ roomCode, username, players, initialGameState,
     });
 
     return () => {
-      console.log('🧹 Cleaning up UNOGame');
+      console.log('🧹 Cleaning up UNO WebSocket listeners');
       unsubscribeGameStarted();
       unsubscribeYourHand();
       unsubscribeCardPlayed();
       unsubscribeCardDrawn();
       unsubscribeGameOver();
+      if (handRequestTimer.current) {
+        clearInterval(handRequestTimer.current);
+      }
     };
-  }, []);
+  }, [username]);
+
+  // Request hand if we don't have cards after 1 second
+  useEffect(() => {
+    if (gameState && myHand.length === 0 && isConnected) {
+      console.log('⚠️ No cards yet, requesting hand...');
+      
+      // Request immediately
+      requestHand();
+      
+      // Set up polling to request hand every second until we get cards
+      handRequestTimer.current = setInterval(() => {
+        if (myHand.length === 0) {
+          console.log('⏰ Still no cards, requesting again...');
+          requestHand();
+        } else {
+          console.log('✅ Got cards, stopping requests');
+          clearInterval(handRequestTimer.current);
+        }
+      }, 1000);
+
+      return () => {
+        if (handRequestTimer.current) {
+          clearInterval(handRequestTimer.current);
+        }
+      };
+    }
+  }, [gameState, myHand.length, isConnected]);
 
   const requestHand = () => {
     if (!isConnected) {
-      console.log('⚠️ Not connected, retrying in 500ms...');
-      setTimeout(requestHand, 500);
+      console.log('⚠️ Not connected, cannot request hand');
       return;
     }
     
-    console.log('📤 Sending REQUEST_HAND for', username);
+    console.log(`📤 Sending REQUEST_HAND for ${username}`);
     sendMessage('REQUEST_HAND', { roomCode, username });
   };
 
   const handlePlayCard = (cardIndex) => {
     const card = myHand[cardIndex];
     
+    if (!card) {
+      console.error('❌ Invalid card index:', cardIndex);
+      return;
+    }
+    
+    console.log(`🎴 Playing card at index ${cardIndex}:`, card);
+    
     if (card.type === 'wild' || card.type === 'wild_draw4') {
       setSelectedCard(cardIndex);
       setShowColorPicker(true);
     } else {
+      console.log('📤 Sending PLAY_CARD');
       sendMessage('PLAY_CARD', { roomCode, username, cardIndex });
       setSelectedCard(null);
     }
   };
 
   const handleColorChoice = (color) => {
+    console.log(`🌈 Chosen color: ${color}`);
+    console.log('📤 Sending PLAY_CARD with color');
     sendMessage('PLAY_CARD', { 
       roomCode, 
       username, 
@@ -111,16 +200,17 @@ export default function UNOGame({ roomCode, username, players, initialGameState,
   };
 
   const handleDrawCard = () => {
+    console.log('📥 Drawing card');
     sendMessage('DRAW_CARD', { roomCode, username });
   };
 
-  // Show loading state while waiting for game state
   if (!gameState) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-red-600 via-yellow-500 to-blue-500 flex items-center justify-center">
         <div className="bg-white rounded-3xl shadow-2xl p-8 text-center">
           <div className="animate-spin rounded-full h-16 w-16 border-b-4 border-red-500 mx-auto mb-4"></div>
-          <h2 className="text-2xl font-bold text-gray-800">Loading UNO...</h2>
+          <h2 className="text-2xl font-bold text-gray-800">Loading UNO Game...</h2>
+          <p className="text-gray-600 mt-2">Please wait...</p>
         </div>
       </div>
     );
@@ -240,8 +330,8 @@ export default function UNOGame({ roomCode, username, players, initialGameState,
 
           {/* Turn Indicator */}
           <div className="mt-6 text-center">
-            <p className={`text-xl font-bold ${isMyTurn ? 'text-green-600' : 'text-gray-600'}`}>
-              {isMyTurn ? "🎯 It's your turn!" : `⏳ ${currentPlayer?.name}'s turn`}
+            <p className={`text-xl font-bold ${isMyTurn ? 'text-green-600 animate-pulse' : 'text-gray-600'}`}>
+              {isMyTurn ? "🎯 It's your turn!" : `⏳ Waiting for ${currentPlayer?.name}...`}
             </p>
           </div>
         </div>
@@ -253,9 +343,10 @@ export default function UNOGame({ roomCode, username, players, initialGameState,
           </h2>
           
           {myHand.length === 0 ? (
-            <div className="text-center py-8">
-              <div className="animate-spin rounded-full h-12 w-12 border-b-4 border-red-500 mx-auto mb-4"></div>
-              <p className="text-gray-600">Loading your cards...</p>
+            <div className="text-center py-12">
+              <div className="animate-spin rounded-full h-16 w-16 border-b-4 border-red-500 mx-auto mb-4"></div>
+              <p className="text-gray-600 text-lg font-semibold">Loading your cards...</p>
+              <p className="text-gray-500 text-sm mt-2">This should only take a moment</p>
             </div>
           ) : (
             <div className="flex gap-3 overflow-x-auto pb-4">
@@ -264,9 +355,12 @@ export default function UNOGame({ roomCode, username, players, initialGameState,
                   key={index}
                   onClick={() => handlePlayCard(index)}
                   disabled={!isMyTurn}
-                  className={`flex-shrink-0 w-24 h-36 rounded-xl ${getCardColor(card)} border-4 border-white shadow-lg flex items-center justify-center text-4xl font-bold text-white transition-transform ${
-                    isMyTurn ? 'hover:scale-110 cursor-pointer hover:-translate-y-2' : 'cursor-not-allowed opacity-50'
+                  className={`flex-shrink-0 w-24 h-36 rounded-xl ${getCardColor(card)} border-4 border-white shadow-lg flex items-center justify-center text-4xl font-bold text-white transition-all ${
+                    isMyTurn 
+                      ? 'hover:scale-110 cursor-pointer hover:-translate-y-2 hover:shadow-2xl' 
+                      : 'cursor-not-allowed opacity-50'
                   }`}
+                  title={isMyTurn ? 'Click to play' : 'Wait for your turn'}
                 >
                   {getCardDisplay(card)}
                 </button>
@@ -279,15 +373,15 @@ export default function UNOGame({ roomCode, username, players, initialGameState,
         {showColorPicker && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
             <div className="bg-white rounded-2xl p-8 shadow-2xl">
-              <h3 className="text-2xl font-bold mb-4 text-center">Choose a Color</h3>
+              <h3 className="text-2xl font-bold mb-6 text-center">Choose a Color</h3>
               <div className="grid grid-cols-2 gap-4">
                 {['red', 'blue', 'green', 'yellow'].map(color => (
                   <button
                     key={color}
                     onClick={() => handleColorChoice(color)}
-                    className={`w-24 h-24 rounded-xl ${getCardColor({ color })} border-4 border-white shadow-lg hover:scale-110 transition-transform flex items-center justify-center`}
+                    className={`w-28 h-28 rounded-xl ${getCardColor({ color })} border-4 border-white shadow-lg hover:scale-110 transition-transform flex items-center justify-center`}
                   >
-                    <span className="text-white text-sm capitalize font-bold">{color}</span>
+                    <span className="text-white text-lg capitalize font-bold">{color}</span>
                   </button>
                 ))}
               </div>

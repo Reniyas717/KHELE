@@ -101,4 +101,37 @@ router.get('/:roomCode', async (req, res) => {
   }
 });
 
+// Add this endpoint to check game state
+router.get('/debug/:roomCode', async (req, res) => {
+  try {
+    const { roomCode } = req.params;
+    const room = await GameRoom.findOne({ roomCode, isActive: true });
+    
+    if (!room) {
+      return res.status(404).json({ message: 'Room not found' });
+    }
+
+    const debug = {
+      roomCode: room.roomCode,
+      host: room.host,
+      players: room.players.map(p => ({ username: p.username, score: p.score })),
+      currentGame: room.currentGame,
+      gameState: room.gameState ? {
+        playerCount: room.gameState.players?.length,
+        players: room.gameState.players?.map(p => ({
+          name: p.name,
+          cardCount: p.hand?.length || 0,
+          score: p.score
+        })),
+        deckSize: room.gameState.deck?.length,
+        topCard: room.gameState.discardPile?.[room.gameState.discardPile.length - 1]
+      } : null
+    };
+
+    res.json(debug);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
 module.exports = router;
