@@ -1,6 +1,6 @@
 const WebSocket = require('ws');
 const GameRoom = require('./models/GameRoom');
-const { initScribbleGame, handleGuess, nextRound } = require('./controllers/scribbleGame');
+const { initScribbleGame, handleGuess, nextRound, selectWord } = require('./controllers/scribbleGame');
 const { initUNOGame, playCard, drawCard } = require('./controllers/unoGame');
 
 // Store active connections
@@ -59,6 +59,9 @@ function initWebSocket(server) {
             break;
           case 'REQUEST_HAND':
             await handleRequestHand(ws, data.payload);
+            break;
+          case 'SELECT_WORD':
+            await handleSelectWord(ws, data.payload);
             break;
           default:
             console.log('⚠️ Unknown message type:', data.type);
@@ -234,43 +237,106 @@ async function handleJoinRoom(ws, payload) {
 async function handleLeaveRoom(ws, payload) {
   try {
     const { roomCode, username } = payload;
-    console.log(`👋 ${username} leaving room ${roomCode}`);
+    console.log(`\n👋 ${username} leaving room ${roomCode}`);
 
-    // Remove from room connections
+    // Remove from room connections FIRST
     const users = roomConnections.get(roomCode);
     if (users) {
       users.delete(username);
+      console.log(`📋 Removed ${username} from room connections`);
       if (users.size === 0) {
         roomConnections.delete(roomCode);
+        console.log(`🗑️ Room ${roomCode} is now empty`);
       }
     }
 
-    // Remove from database
-    const room = await GameRoom.findOne({ roomCode });
-    if (room) {
-      room.players = room.players.filter(p => p.username !== username);
-      
-      // If no players left, deactivate room
-      if (room.players.length === 0) {
-        room.isActive = false;
-      }
-      // If host left, assign new host
-      else if (room.host === username) {
-        room.host = room.players[0].username;
-      }
-      
-      await room.save();
+    // Remove from clients
+    clients.delete(username);
+    console.log(`🗑️ Removed ${username} from clients`);
 
-      // Broadcast player left
-      broadcastToRoom(roomCode, {
-        type: 'PLAYER_LEFT',
-        payload: { username, players: room.players }
-      });
+    // Update database with retry logic for version conflicts
+    let retries = 3;
+    while (retries > 0) {
+      try {
+        // Get fresh room data
+        const room = await GameRoom.findOne({ roomCode, isActive: true });
+        if (!room) {
+          console.log('⚠️ Room not found or already inactive');
+          return;
+        }
+
+        // Remove player
+        room.players = room.players.filter(p => p.username !== username);
+        console.log(`📋 Players remaining:`, room.players.map(p => p.username));
+        
+        // If no players left, deactivate room
+        if (room.players.length === 0) {
+          room.isActive = false;
+          console.log(`🔒 Room ${roomCode} deactivated`);
+        }
+        // If host left, assign new host
+        else if (room.host === username) {
+          room.host = room.players[0].username;
+          console.log(`👑 New host: ${room.host}`);
+        }
+        
+        // Save with version check
+        await room.save();
+        console.log('💾 Room saved successfully');
+
+        // Broadcast to remaining players
+        if (room.players.length > 0) {
+          console.log(`📢 Broadcasting PLAYER_LEFT to remaining players`);
+          
+          const updatePayload = {
+            username, 
+            players: room.players,
+            host: room.host
+          };
+
+          broadcastToRoom(roomCode, {
+            type: 'PLAYER_LEFT',
+            payload: updatePayload
+          });
+
+          // Small delay then send ROOM_UPDATE
+          setTimeout(() => {
+            broadcastToRoom(roomCode, {
+              type: 'ROOM_UPDATE',
+              payload: { 
+                room: {
+                  roomCode: room.roomCode,
+                  host: room.host,
+                  players: room.players,
+                  isActive: room.isActive
+                }
+              }
+            });
+          }, 100);
+        }
+
+        console.log(`✅ ${username} successfully left room ${roomCode}\n`);
+        return; // Success, exit retry loop
+
+      } catch (saveError) {
+        if (saveError.name === 'VersionError' && retries > 1) {
+          console.log(`⚠️ Version conflict, retrying... (${retries - 1} attempts left)`);
+          retries--;
+          await new Promise(resolve => setTimeout(resolve, 100)); // Wait before retry
+          continue;
+        } else {
+          throw saveError; // Give up
+        }
+      }
     }
 
-    console.log(`✅ ${username} left room ${roomCode}`);
   } catch (error) {
     console.error('❌ Error in handleLeaveRoom:', error);
+    // Even if database fails, still broadcast the leave event
+    broadcastToRoom(roomCode, {
+      type: 'PLAYER_LEFT',
+      payload: { username }
+    });
   }
 }
 
@@ -540,18 +606,93 @@ async function handleRequestHand(ws, payload) {
   try {
     const { roomCode, username } = payload;
     
-    const room = await GameRoom.findOne({ roomCode });
-    if (!room || !room.gameState) return;
+    console.log(`\n🤚 ========== REQUEST_HAND ==========`);
+    console.log(`👤 Player: ${username}`);
+    console.log(`🏠 Room: ${roomCode}`);
+    
+    const room = await GameRoom.findOne({ roomCode, isActive: true });
+    if (!room) {
+      console.error('❌ Room not found');
+      return;
+    }
+
+    if (!room.gameState) {
+      console.error('❌ No game state in room');
+      return;
+    }
+
+    if (!room.gameState.players) {
+      console.error('❌ No players in game state');
+      return;
+    }
 
     const player = room.gameState.players.find(p => p.name === username);
-    if (player) {
-      ws.send(JSON.stringify({
-        type: 'YOUR_HAND',
-        payload: { hand: player.hand }
-      }));
+    if (!player) {
+      console.error(`❌ Player ${username} not found in game`);
+      console.log('📋 Available players:', room.gameState.players.map(p => p.name));
+      return;
+    }
+
+    if (!player.hand) {
+      console.error(`❌ Player ${username} has no hand!`);
+      return;
+    }
+
+    console.log(`✅ Found player with ${player.hand.length} cards`);
+    console.log(`📋 Cards:`, player.hand.map(c => `${c.color || 'wild'} ${c.type} ${c.value !== undefined ? c.value : ''}`));
+
+    const response = {
+      type: 'YOUR_HAND',
+      payload: { hand: player.hand }
+    };
+
+    ws.send(JSON.stringify(response));
+    console.log(`✅ Sent hand to ${username}`);
+    console.log('===================================\n');
+  } catch (error) {
+    console.error('❌ Error in handleRequestHand:', error);
+  }
+}
+
+async function handleSelectWord(ws, payload) {
+  try {
+    const { roomCode, word } = payload;
+    
+    console.log(`📝 SELECT_WORD received for room ${roomCode}, word: ${word}`);
+    
+    const room = await GameRoom.findOne({ roomCode, isActive: true });
+    if (!room) {
+      console.error('❌ Room not found');
+      ws.send(JSON.stringify({ type: 'ERROR', payload: { message: 'Room not found' } }));
+      return;
+    }
+
+    if (!room.gameState) {
+      console.error('❌ No game state');
+      ws.send(JSON.stringify({ type: 'ERROR', payload: { message: 'No active game' } }));
+      return;
+    }
+
+    const { selectWord } = require('./controllers/scribbleGame');
+    const result = selectWord(room.gameState, word);
+    
+    if (result.success) {
+      room.gameState = result.gameState;
+      await room.save();
+
+      console.log('✅ Word selected, broadcasting to room');
+      
+      broadcastToRoom(roomCode, {
+        type: 'WORD_SELECTED',
+        payload: { gameState: result.gameState }
+      });
+    } else {
+      console.error('❌ Word selection failed:', result.message);
+      ws.send(JSON.stringify({ type: 'ERROR', payload: { message: result.message } }));
     }
   } catch (error) {
-    console.error('Error in handleRequestHand:', error);
+    console.error('❌ Error in handleSelectWord:', error);
+    ws.send(JSON.stringify({ type: 'ERROR', payload: { message: error.message } }));
   }
 }
 

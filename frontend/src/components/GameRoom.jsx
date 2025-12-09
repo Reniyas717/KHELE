@@ -42,11 +42,17 @@ export default function GameRoom({ roomCode, username, initialRoomData, preSelec
     });
 
     const unsubscribePlayerLeft = on('PLAYER_LEFT', (payload) => {
-      console.log('👋 PLAYER_LEFT event:', payload.username);
-      setRoom(prevRoom => ({
-        ...prevRoom,
-        players: payload.players
-      }));
+      console.log('👋 PLAYER_LEFT event:', payload);
+      
+      setRoom(prevRoom => {
+        if (!prevRoom) return prevRoom;
+        
+        return {
+          ...prevRoom,
+          players: payload.players || prevRoom.players.filter(p => p.username !== payload.username),
+          host: payload.host || prevRoom.host
+        };
+      });
     });
 
     const unsubscribeGameStarted = on('GAME_STARTED', (payload) => {

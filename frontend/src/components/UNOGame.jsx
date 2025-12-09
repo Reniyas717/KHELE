@@ -3,90 +3,93 @@ import { useWebSocket } from '../context/WebSocketContext';
 
 export default function UNOGame({ roomCode, username, players, initialGameState, onLeaveRoom }) {
   const [gameState, setGameState] = useState(initialGameState);
+  const [myHand, setMyHand] = useState([]);
   const [selectedCard, setSelectedCard] = useState(null);
   const [showColorPicker, setShowColorPicker] = useState(false);
-  const [myHand, setMyHand] = useState([]);
   const { sendMessage, on, isConnected } = useWebSocket();
   const setupComplete = useRef(false);
+  const handRequested = useRef(false);
 
-  // Update game state when initialGameState prop changes
+  // Update game state and request hand
   useEffect(() => {
-    if (initialGameState && !gameState) {
-      console.log('📦 Received initial UNO game state from props:', initialGameState);
+    if (initialGameState) {
+      console.log('📦 Setting initial game state for UNO');
       setGameState(initialGameState);
-      requestHand();
+      
+      // Request hand immediately
+      if (!handRequested.current && isConnected) {
+        console.log('🤚 Requesting hand immediately');
+        requestHand();
+        handRequested.current = true;
+      }
     }
-  }, [initialGameState]);
+  }, [initialGameState, isConnected]);
 
   useEffect(() => {
     if (setupComplete.current) return;
     setupComplete.current = true;
 
-    console.log('🃏 UNOGame mounted for room:', roomCode, 'user:', username);
-    console.log('📦 Initial game state on mount:', initialGameState);
+    console.log('🃏 UNOGame mounted for', username);
 
-    // Listen for game updates
     const unsubscribeGameStarted = on('GAME_STARTED', (payload) => {
-      console.log('🎮 UNO Game started:', payload);
+      console.log('🎮 GAME_STARTED received:', payload);
       if (payload.gameState && payload.gameType === 'uno') {
         setGameState(payload.gameState);
-        requestHand();
+        // Request hand after game starts
+        setTimeout(() => {
+          requestHand();
+        }, 500);
       }
     });
 
+    const unsubscribeYourHand = on('YOUR_HAND', (payload) => {
+      console.log('🤚 YOUR_HAND received:', payload.hand.length, 'cards');
+      setMyHand(payload.hand);
+    });
+
     const unsubscribeCardPlayed = on('CARD_PLAYED', (payload) => {
-      console.log('🃏 Card played:', payload);
+      console.log('🃏 Card played');
       setGameState(payload.gameState);
       requestHand();
     });
 
     const unsubscribeCardDrawn = on('CARD_DRAWN', (payload) => {
-      console.log('📥 Card drawn:', payload);
+      console.log('📥 Card drawn');
       setGameState(payload.gameState);
       requestHand();
     });
 
-    const unsubscribeYourHand = on('YOUR_HAND', (payload) => {
-      console.log('🤚 Your hand:', payload);
-      setMyHand(payload.hand);
-    });
-
     const unsubscribeGameOver = on('GAME_OVER', (payload) => {
-      console.log('🏆 Game over:', payload);
-      alert(`${payload.winner} wins!`);
-    });
-
-    // Request initial hand if we have game state
-    if (initialGameState) {
-      requestHand();
-    } else {
-      // Request game state as fallback
       setTimeout(() => {
-        if (!gameState) {
-          sendMessage('REQUEST_GAME_STATE', { roomCode });
-        }
-      }, 1000);
-    }
+        alert(`🏆 ${payload.winner} wins!`);
+        onLeaveRoom();
+      }, 500);
+    });
 
     return () => {
       console.log('🧹 Cleaning up UNOGame');
       unsubscribeGameStarted();
+      unsubscribeYourHand();
       unsubscribeCardPlayed();
       unsubscribeCardDrawn();
-      unsubscribeYourHand();
       unsubscribeGameOver();
     };
   }, []);
 
   const requestHand = () => {
-    console.log('🤚 Requesting hand for', username);
+    if (!isConnected) {
+      console.log('⚠️ Not connected, retrying in 500ms...');
+      setTimeout(requestHand, 500);
+      return;
+    }
+    
+    console.log('📤 Sending REQUEST_HAND for', username);
     sendMessage('REQUEST_HAND', { roomCode, username });
   };
 
   const handlePlayCard = (cardIndex) => {
     const card = myHand[cardIndex];
     
-    // Check if it's a wild card
     if (card.type === 'wild' || card.type === 'wild_draw4') {
       setSelectedCard(cardIndex);
       setShowColorPicker(true);
@@ -117,19 +120,7 @@ export default function UNOGame({ roomCode, username, players, initialGameState,
       <div className="min-h-screen bg-gradient-to-br from-red-600 via-yellow-500 to-blue-500 flex items-center justify-center">
         <div className="bg-white rounded-3xl shadow-2xl p-8 text-center">
           <div className="animate-spin rounded-full h-16 w-16 border-b-4 border-red-500 mx-auto mb-4"></div>
-          <h2 className="text-2xl font-bold text-gray-800">Loading UNO Game...</h2>
-          <p className="text-gray-600 mt-2">Please wait while we set up the game</p>
-          <div className="mt-6 bg-gray-100 rounded-lg p-4 text-left text-sm">
-            <p className="text-gray-700"><span className="font-semibold">Room:</span> {roomCode}</p>
-            <p className="text-gray-700"><span className="font-semibold">Player:</span> {username}</p>
-            <p className="text-gray-700 mt-2">
-              <span className={`inline-block w-2 h-2 rounded-full mr-2 ${isConnected ? 'bg-green-500' : 'bg-red-500'}`}></span>
-              {isConnected ? 'Connected' : 'Connecting...'}
-            </p>
-            <p className="text-xs text-gray-500 mt-2">
-              Initial state: {initialGameState ? '✅ Present' : '❌ Missing'}
-            </p>
-          </div>
+          <h2 className="text-2xl font-bold text-gray-800">Loading UNO...</h2>
         </div>
       </div>
     );
@@ -139,9 +130,8 @@ export default function UNOGame({ roomCode, username, players, initialGameState,
   const currentPlayer = gameState.players?.[gameState.currentPlayerIndex];
   const isMyTurn = currentPlayer?.name === username;
 
-  // Get card color for styling
   const getCardColor = (card) => {
-    if (!card) return 'gray';
+    if (!card) return 'bg-gray-800';
     const color = card.color || gameState.currentColor;
     const colorMap = {
       'red': 'bg-red-500',
@@ -203,11 +193,11 @@ export default function UNOGame({ roomCode, username, players, initialGameState,
                     {player.name === username && ' (You)'}
                   </span>
                   <span className="text-2xl font-bold text-red-500">
-                    {player.hand?.length || 0}
+                    {player.name === username ? myHand.length : (player.hand?.length || 0)}
                   </span>
                 </div>
                 {index === gameState.currentPlayerIndex && (
-                  <p className="text-xs text-green-600 mt-1">Current Turn</p>
+                  <p className="text-xs text-green-600 mt-1">🎯 Current Turn</p>
                 )}
               </div>
             ))}
@@ -242,8 +232,8 @@ export default function UNOGame({ roomCode, username, players, initialGameState,
                 {getCardDisplay(topCard)}
               </div>
               <p className="mt-2 text-sm font-semibold">Current Card</p>
-              <p className="text-xs text-gray-600">
-                Color: <span className="capitalize">{gameState.currentColor}</span>
+              <p className="text-xs text-gray-600 capitalize">
+                Color: {gameState.currentColor}
               </p>
             </div>
           </div>
@@ -251,28 +241,38 @@ export default function UNOGame({ roomCode, username, players, initialGameState,
           {/* Turn Indicator */}
           <div className="mt-6 text-center">
             <p className={`text-xl font-bold ${isMyTurn ? 'text-green-600' : 'text-gray-600'}`}>
-              {isMyTurn ? "🎯 It's your turn!" : `⏳ Waiting for ${currentPlayer?.name}...`}
+              {isMyTurn ? "🎯 It's your turn!" : `⏳ ${currentPlayer?.name}'s turn`}
             </p>
           </div>
         </div>
 
         {/* Your Hand */}
         <div className="bg-white rounded-2xl shadow-xl p-6">
-          <h2 className="text-xl font-bold mb-4">Your Hand ({myHand.length} cards)</h2>
-          <div className="flex gap-3 overflow-x-auto pb-4">
-            {myHand.map((card, index) => (
-              <button
-                key={index}
-                onClick={() => handlePlayCard(index)}
-                disabled={!isMyTurn}
-                className={`flex-shrink-0 w-24 h-36 rounded-xl ${getCardColor(card)} border-4 border-white shadow-lg flex items-center justify-center text-4xl font-bold text-white transition-transform ${
-                  isMyTurn ? 'hover:scale-110 cursor-pointer' : 'cursor-not-allowed opacity-50'
-                }`}
-              >
-                {getCardDisplay(card)}
-              </button>
-            ))}
-          </div>
+          <h2 className="text-xl font-bold mb-4">
+            Your Hand ({myHand.length} {myHand.length === 1 ? 'card' : 'cards'})
+          </h2>
+          
+          {myHand.length === 0 ? (
+            <div className="text-center py-8">
+              <div className="animate-spin rounded-full h-12 w-12 border-b-4 border-red-500 mx-auto mb-4"></div>
+              <p className="text-gray-600">Loading your cards...</p>
+            </div>
+          ) : (
+            <div className="flex gap-3 overflow-x-auto pb-4">
+              {myHand.map((card, index) => (
+                <button
+                  key={index}
+                  onClick={() => handlePlayCard(index)}
+                  disabled={!isMyTurn}
+                  className={`flex-shrink-0 w-24 h-36 rounded-xl ${getCardColor(card)} border-4 border-white shadow-lg flex items-center justify-center text-4xl font-bold text-white transition-transform ${
+                    isMyTurn ? 'hover:scale-110 cursor-pointer hover:-translate-y-2' : 'cursor-not-allowed opacity-50'
+                  }`}
+                >
+                  {getCardDisplay(card)}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* Color Picker Modal */}
@@ -285,7 +285,7 @@ export default function UNOGame({ roomCode, username, players, initialGameState,
                   <button
                     key={color}
                     onClick={() => handleColorChoice(color)}
-                    className={`w-24 h-24 rounded-xl ${getCardColor({ color })} border-4 border-white shadow-lg hover:scale-110 transition-transform`}
+                    className={`w-24 h-24 rounded-xl ${getCardColor({ color })} border-4 border-white shadow-lg hover:scale-110 transition-transform flex items-center justify-center`}
                   >
                     <span className="text-white text-sm capitalize font-bold">{color}</span>
                   </button>
