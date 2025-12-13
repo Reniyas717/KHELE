@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useRef, useState } from 'react';
+import { createContext, useContext, useEffect, useRef, useState, useCallback } from 'react';
 
 const WebSocketContext = createContext(null);
 
@@ -53,19 +53,24 @@ export const WebSocketProvider = ({ children }) => {
       ws.current.onmessage = (event) => {
         try {
           const data = JSON.parse(event.data);
-          console.log('📨 Received:', data.type);
+          console.log('📨 Received WebSocket message:', data.type);
+          console.log('📦 Message data:', data);
 
-          // Call all registered handlers for this message type
-          const handlers = messageHandlers.current.get(data.type) || [];
-          handlers.forEach(handler => {
-            try {
-              handler(data.payload);
-            } catch (error) {
-              console.error('Error in message handler:', error);
-            }
-          });
+          const handlers = messageHandlers.current.get(data.type);
+          if (handlers && handlers.size > 0) {
+            console.log(`🔔 Calling ${handlers.size} handler(s) for:`, data.type);
+            handlers.forEach(handler => {
+              try {
+                handler(data);
+              } catch (error) {
+                console.error('❌ Error in message handler:', error);
+              }
+            });
+          } else {
+            console.log('⚠️ No handlers registered for:', data.type);
+          }
         } catch (error) {
-          console.error('Error parsing WebSocket message:', error);
+          console.error('❌ Error parsing WebSocket message:', error);
         }
       };
 
@@ -123,36 +128,36 @@ export const WebSocketProvider = ({ children }) => {
     reconnectAttempts.current = 0;
   };
 
-  const sendMessage = (type, payload) => {
-    if (ws.current?.readyState === WebSocket.OPEN) {
-      // Add username to all messages
-      const username = localStorage.getItem('username');
-      const messagePayload = { ...payload, username };
-      
-      ws.current.send(JSON.stringify({ type, payload: messagePayload }));
-      console.log('📤 Sent:', type, messagePayload);
-    } else {
+  const sendMessage = useCallback((type, payload) => {
+    if (!ws.current || ws.current.readyState !== WebSocket.OPEN) {
       console.error('❌ WebSocket not connected, cannot send:', type);
+      return;
     }
-  };
 
-  const on = (messageType, handler) => {
-    if (!messageHandlers.current.has(messageType)) {
-      messageHandlers.current.set(messageType, []);
+    const message = { type, payload };
+    console.log('📤 Sending message:', type, payload);
+    ws.current.send(JSON.stringify(message));
+  }, []);
+
+  const on = useCallback((event, handler) => {
+    console.log('👂 Registering handler for:', event);
+    
+    if (!messageHandlers.current.has(event)) {
+      messageHandlers.current.set(event, new Set());
     }
-    messageHandlers.current.get(messageType).push(handler);
+    messageHandlers.current.get(event).add(handler);
 
-    // Return cleanup function
     return () => {
-      const handlers = messageHandlers.current.get(messageType);
+      console.log('🔕 Unregistering handler for:', event);
+      const handlers = messageHandlers.current.get(event);
       if (handlers) {
-        const index = handlers.indexOf(handler);
-        if (index > -1) {
-          handlers.splice(index, 1);
+        handlers.delete(handler);
+        if (handlers.size === 0) {
+          messageHandlers.current.delete(event);
         }
       }
     };
-  };
+  }, []);
 
   useEffect(() => {
     return () => {

@@ -126,111 +126,85 @@ function broadcastToRoom(roomCode, message) {
 async function handleJoinRoom(ws, payload) {
   try {
     const { roomCode, username } = payload;
-
+    
     if (!roomCode || !username) {
       console.error('❌ Missing roomCode or username');
-      ws.send(JSON.stringify({ type: 'ERROR', payload: { message: 'Missing roomCode or username' } }));
+      ws.send(JSON.stringify({
+        type: 'ERROR',
+        payload: { message: 'Missing roomCode or username' }
+      }));
       return;
     }
 
-    console.log(`\n🚪 ${username} attempting to join room ${roomCode}`);
+    console.log('🔍 Join attempt:', { roomCode, username });
 
-    // Remove old connection if exists
-    const oldWs = clients.get(username);
-    if (oldWs && oldWs !== ws && oldWs.readyState === WebSocket.OPEN) {
-      console.log(`⚠️ Closing old connection for ${username}`);
-      oldWs.close();
+    const room = await GameRoom.findOne({ roomCode: roomCode.toUpperCase() });
+    
+    if (!room) {
+      console.error('❌ Room not found:', roomCode);
+      ws.send(JSON.stringify({
+        type: 'ERROR',
+        payload: { message: 'Room not found' }
+      }));
+      return;
     }
 
-    // Store new connection FIRST
+    console.log('🎯 Room found:', roomCode);
+
+    // Add player if not already in room
+    if (!room.players.find(p => p.username === username)) {
+      room.players.push({ username, score: 0 });
+      await room.save();
+      console.log('✅ Player added to room:', username);
+    }
+
+    // Store connection
     clients.set(username, ws);
-    console.log(`✅ Stored connection for ${username}`);
     
-    // Add to room connections
     if (!roomConnections.has(roomCode)) {
       roomConnections.set(roomCode, new Set());
     }
     roomConnections.get(roomCode).add(username);
-    console.log(`📋 Room ${roomCode} now has users:`, Array.from(roomConnections.get(roomCode)));
 
-    // Get room from database
-    const room = await GameRoom.findOne({ roomCode, isActive: true });
-    if (!room) {
-      console.error(`❌ Room ${roomCode} not found`);
-      ws.send(JSON.stringify({ type: 'ERROR', payload: { message: 'Room not found' } }));
-      return;
-    }
-
-    // Add player to database if not already there
-    const existingPlayer = room.players.find(p => p.username === username);
-    if (!existingPlayer) {
-      console.log(`➕ Adding ${username} to room database`);
-      room.players.push({
-        username: username,
-        score: 0
-      });
-      await room.save();
-      console.log(`✅ Player added. Room now has ${room.players.length} players:`, room.players.map(p => p.username));
-    } else {
-      console.log(`ℹ️ ${username} already in database`);
-    }
-
-    // Reload room to get fresh data
-    const updatedRoom = await GameRoom.findOne({ roomCode, isActive: true });
-
-    // Send confirmation to the joining player
-    ws.send(JSON.stringify({ 
-      type: 'JOINED_ROOM', 
-      payload: { 
-        roomCode, 
+    // Send confirmation to the joining player with FULL room data
+    ws.send(JSON.stringify({
+      type: 'ROOM_JOINED',
+      payload: {
         room: {
-          roomCode: updatedRoom.roomCode,
-          host: updatedRoom.host,
-          players: updatedRoom.players,
-          isActive: updatedRoom.isActive,
-          currentGame: updatedRoom.currentGame,
-          gameState: updatedRoom.gameState
+          roomCode: room.roomCode,
+          host: room.host,
+          gameType: room.gameType,
+          players: room.players,
+          gameStarted: room.gameStarted,
+          gameState: room.gameState
         }
-      } 
+      }
     }));
-    console.log(`✅ Sent JOINED_ROOM confirmation to ${username}`);
 
-    // Wait a moment for the connection to stabilize
-    await new Promise(resolve => setTimeout(resolve, 100));
-
-    // Broadcast to ALL users in the room (including the one who just joined)
-    const playerJoinedMessage = {
+    // Notify all OTHER players in room with FULL room data
+    broadcastToRoom(roomCode, {
       type: 'PLAYER_JOINED',
-      payload: { 
-        username, 
-        players: updatedRoom.players
-      }
-    };
-
-    console.log(`📢 Broadcasting PLAYER_JOINED for ${username}`);
-    broadcastToRoom(roomCode, playerJoinedMessage);
-
-    // Send ROOM_UPDATE to ensure everyone has the latest state
-    const roomUpdateMessage = {
-      type: 'ROOM_UPDATE',
-      payload: { 
+      payload: {
+        username,
         room: {
-          roomCode: updatedRoom.roomCode,
-          host: updatedRoom.host,
-          players: updatedRoom.players,
-          isActive: updatedRoom.isActive,
-          currentGame: updatedRoom.currentGame
+          roomCode: room.roomCode,
+          host: room.host,
+          gameType: room.gameType,
+          players: room.players,
+          gameStarted: room.gameStarted,
+          gameState: room.gameState
         }
       }
-    };
+    });
 
-    console.log(`📢 Broadcasting ROOM_UPDATE`);
-    broadcastToRoom(roomCode, roomUpdateMessage);
+    console.log('✅ User joined room:', { username, roomCode, totalPlayers: room.players.length });
 
-    console.log(`✅ ${username} successfully joined room ${roomCode}\n`);
   } catch (error) {
     console.error('❌ Error in handleJoinRoom:', error);
-    ws.send(JSON.stringify({ type: 'ERROR', payload: { message: error.message } }));
+    ws.send(JSON.stringify({
+      type: 'ERROR',
+      payload: { message: 'Failed to join room' }
+    }));
   }
 }
 
@@ -342,102 +316,59 @@ async function handleLeaveRoom(ws, payload) {
 
 async function handleStartGame(ws, payload) {
   try {
-    const { roomCode, gameType } = payload;
-    
-    console.log(`\n🎮 ========== STARTING GAME ==========`);
-    console.log(`🏠 Room: ${roomCode}`);
-    console.log(`🎯 Game Type: ${gameType}`);
-    
-    const room = await GameRoom.findOne({ roomCode, isActive: true });
+    const { roomCode } = payload;
+    console.log('🎮 Starting game in room:', roomCode);
+
+    const room = await GameRoom.findOne({ roomCode });
     if (!room) {
-      console.error(`❌ Room ${roomCode} not found`);
-      ws.send(JSON.stringify({ type: 'ERROR', payload: { message: 'Room not found' } }));
+      console.error('❌ Room not found');
       return;
     }
 
     if (room.players.length < 2) {
-      console.error(`❌ Not enough players (${room.players.length})`);
-      ws.send(JSON.stringify({ type: 'ERROR', payload: { message: 'Need at least 2 players' } }));
+      ws.send(JSON.stringify({
+        type: 'ERROR',
+        payload: { message: 'Need at least 2 players to start' }
+      }));
       return;
     }
 
-    console.log(`👥 Players in room:`, room.players.map(p => p.username));
+    room.gameStarted = true;
 
     // Initialize game based on type
-    let gameState;
-    if (gameType === 'scribble') {
-      gameState = initScribbleGame(room.players.map(p => p.username));
-      room.gameState = gameState;
-      room.currentGame = 'scribble';
+    if (room.gameType === 'scribble') {
+      const playerUsernames = room.players.map(p => p.username);
+      room.gameState = initScribbleGame(playerUsernames);
       console.log('✅ Scribble game initialized');
-    } else if (gameType === 'uno') {
-      gameState = initUNOGame(room.players.map(p => p.username));
-      room.gameState = gameState;
-      room.currentGame = 'uno';
+    } else if (room.gameType === 'uno') {
+      const playerUsernames = room.players.map(p => p.username);
+      room.gameState = initUNOGame(playerUsernames);
       console.log('✅ UNO game initialized');
-      console.log('🃏 Verifying all players have cards:');
-      gameState.players.forEach(p => {
-        console.log(`   - ${p.name}: ${p.hand.length} cards`);
-      });
     }
 
     await room.save();
-    console.log('💾 Game state saved to database');
-    
-    // Broadcast game started to ALL players
-    const gameStartPayload = {
+
+    // Broadcast game start to all players with FULL game state
+    broadcastToRoom(roomCode, {
       type: 'GAME_STARTED',
-      payload: { 
-        gameType: gameType,
-        gameState: gameState
-      }
-    };
-
-    console.log(`📢 Broadcasting GAME_STARTED to all players in room ${roomCode}`);
-    
-    const users = roomConnections.get(roomCode);
-    if (!users || users.size === 0) {
-      console.error(`❌ No connected users found in room ${roomCode}`);
-      return;
-    }
-
-    console.log(`👥 Broadcasting to ${users.size} users:`, Array.from(users));
-
-    // Send to each player individually and confirm
-    let successCount = 0;
-    for (const playerUsername of users) {
-      const playerWs = clients.get(playerUsername);
-      if (playerWs && playerWs.readyState === WebSocket.OPEN) {
-        try {
-          playerWs.send(JSON.stringify(gameStartPayload));
-          console.log(`  ✅ Sent to ${playerUsername}`);
-          successCount++;
-          
-          // For UNO, also send individual hand
-          if (gameType === 'uno') {
-            const player = gameState.players.find(p => p.name === playerUsername);
-            if (player && player.hand) {
-              const handPayload = {
-                type: 'YOUR_HAND',
-                payload: { hand: player.hand, playerName: playerUsername }
-              };
-              playerWs.send(JSON.stringify(handPayload));
-              console.log(`  🃏 Sent ${player.hand.length} cards to ${playerUsername}`);
-            }
-          }
-        } catch (error) {
-          console.error(`  ❌ Failed to send to ${playerUsername}:`, error.message);
+      payload: {
+        gameType: room.gameType,
+        gameState: room.gameState,
+        room: {
+          roomCode: room.roomCode,
+          host: room.host,
+          gameType: room.gameType,
+          players: room.players,
+          gameStarted: room.gameStarted,
+          gameState: room.gameState
         }
-      } else {
-        console.error(`  ❌ Connection not ready for ${playerUsername}`);
       }
-    }
+    });
 
-    console.log(`📊 Broadcast complete: ${successCount}/${users.size} successful`);
-    console.log('========================================\n');
+    console.log('✅ Game started and broadcasted');
+
   } catch (error) {
-    console.error('❌ Error in handleStartGame:', error);
-    ws.send(JSON.stringify({ type: 'ERROR', payload: { message: error.message } }));
+    console.error('❌ Error starting game:', error);
   }
 }
 
