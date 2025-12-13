@@ -10,10 +10,9 @@ const Landing = () => {
   const { theme, toggleTheme, colors } = useTheme();
   
   const particleCanvasRef = useRef(null);
-  const gridCanvasRef = useRef(null);
   const particlesRef = useRef([]);
 
-  // Particle Text Effect - KEEP YOUR EXISTING PARTICLE CODE HERE
+  // Particle class and intro logic
   class Particle {
     constructor() {
       this.pos = { x: 0, y: 0 };
@@ -245,107 +244,100 @@ const Landing = () => {
     };
   }, [showIntro, colors.primary]);
 
-  // Intro sequence timing
   useEffect(() => {
     const timer = setTimeout(() => setShowIntro(false), 9000);
     return () => clearTimeout(timer);
   }, []);
 
-  // Define sections
+  // Define sections with PROPER STYLING
   const sections = [
-    // Hero Section
     {
-      leftLabel: "Gaming",
+      leftLabel: "GAMING",
       title: (
-        <div className="flex flex-col items-center">
+        <div className="flex flex-col items-center px-4">
           <div
-            className="inline-block mb-6 px-6 py-2 rounded-full font-poppins font-medium animate-pulse"
+            className="inline-block mb-4 px-4 py-2 rounded-full font-poppins font-medium text-sm"
             style={{
               background: `linear-gradient(135deg, ${colors.primary}20, ${colors.secondary}20)`,
-              border: `1px solid ${colors.primary}40`,
+              border: `1px solid ${colors.primary}60`,
               color: colors.primary
             }}
           >
             🎮 Next-Gen Gaming Platform
           </div>
           <h1
-            className="font-orbitron text-8xl md:text-9xl font-black mb-6"
+            className="font-orbitron text-6xl md:text-8xl font-black mb-4"
             style={{
               background: `linear-gradient(45deg, ${colors.primary}, ${colors.secondary}, ${colors.accent})`,
               WebkitBackgroundClip: 'text',
               WebkitTextFillColor: 'transparent',
-              filter: `drop-shadow(0 0 60px ${colors.glow})`
+              textShadow: `0 0 60px ${colors.glow}40`
             }}
           >
             KHELE
           </h1>
-          <p className="font-poppins text-3xl md:text-4xl mb-4 font-light" style={{ color: colors.text }}>
+          <p className="font-poppins text-2xl md:text-3xl mb-3 font-light" style={{ color: colors.text }}>
             Where Champions Are Born
           </p>
-          <p className="font-raleway text-xl max-w-2xl mx-auto mb-8" style={{ color: colors.textSecondary }}>
-            Experience the future of online gaming with stunning visuals and real-time multiplayer action
-          </p>
-          <div className="flex gap-6 justify-center flex-wrap">
-            <button
-              onClick={() => navigate('/login')}
-              className="group font-raleway font-bold px-10 py-5 rounded-2xl hover:scale-105 transition-all shadow-2xl relative overflow-hidden z-20"
-              style={{
-                background: `linear-gradient(135deg, ${colors.primary}, ${colors.secondary})`,
-                color: theme === 'dark' ? '#000' : '#fff'
-              }}
-            >
-              <span className="relative z-10">Start Playing</span>
-            </button>
-          </div>
-        </div>
-      ),
-      rightLabel: "Excellence",
-      background: 'transparent',
-    },
-
-    // UNO Game Section
-    {
-      leftLabel: "Classic",
-      title: (
-        <div className="flex flex-col items-center">
-          <div className="text-9xl mb-8 animate-bounce">🎴</div>
-          <h2 className="font-orbitron text-7xl font-bold mb-6 drop-shadow-2xl" style={{ color: colors.text }}>
-            UNO
-          </h2>
-          <p className="font-poppins text-2xl mb-8 max-w-xl" style={{ color: colors.textSecondary }}>
-            Experience the classic card game with stunning animations and real-time multiplayer
+          <p className="font-raleway text-base md:text-lg max-w-xl mx-auto mb-6 opacity-80" style={{ color: colors.textSecondary }}>
+            Experience the future of online gaming with stunning visuals
           </p>
           <button
             onClick={() => navigate('/login')}
-            className="font-raleway font-bold px-8 py-4 rounded-xl hover:scale-110 transition-all z-20"
+            className="font-raleway font-bold px-8 py-4 rounded-xl hover:scale-105 transition-all text-lg"
+            style={{
+              background: `linear-gradient(135deg, ${colors.primary}, ${colors.secondary})`,
+              color: theme === 'dark' ? '#000' : '#fff',
+              boxShadow: `0 0 30px ${colors.glow}60`
+            }}
+          >
+            Start Playing
+          </button>
+        </div>
+      ),
+      rightLabel: "EXCELLENCE",
+    },
+
+    {
+      leftLabel: "CLASSIC",
+      title: (
+        <div className="flex flex-col items-center px-4">
+          <div className="text-7xl mb-6">🎴</div>
+          <h2 className="font-orbitron text-5xl md:text-6xl font-bold mb-4" style={{ color: colors.text }}>
+            UNO
+          </h2>
+          <p className="font-poppins text-lg md:text-xl mb-6 max-w-lg text-center" style={{ color: colors.textSecondary }}>
+            Classic card game with stunning animations
+          </p>
+          <button
+            onClick={() => navigate('/login')}
+            className="font-raleway font-bold px-6 py-3 rounded-xl hover:scale-110 transition-all"
             style={{
               background: `linear-gradient(135deg, ${colors.primary}, ${colors.secondary})`,
               color: theme === 'dark' ? '#000' : '#fff'
             }}
           >
-            Play UNO Now
+            Play UNO
           </button>
         </div>
       ),
-      rightLabel: "Cards",
-      background: 'transparent',
+      rightLabel: "CARDS",
     },
 
-    // Scribble Game Section
     {
-      leftLabel: "Creative",
+      leftLabel: "CREATIVE",
       title: (
-        <div className="flex flex-col items-center">
-          <div className="text-9xl mb-8 animate-pulse">🎨</div>
-          <h2 className="font-orbitron text-7xl font-bold mb-6 drop-shadow-2xl" style={{ color: colors.text }}>
+        <div className="flex flex-col items-center px-4">
+          <div className="text-7xl mb-6">🎨</div>
+          <h2 className="font-orbitron text-5xl md:text-6xl font-bold mb-4" style={{ color: colors.text }}>
             Scribble
           </h2>
-          <p className="font-poppins text-2xl mb-8 max-w-xl" style={{ color: colors.textSecondary }}>
-            Draw, guess, and have fun with friends in this exciting artistic challenge
+          <p className="font-poppins text-lg md:text-xl mb-6 max-w-lg text-center" style={{ color: colors.textSecondary }}>
+            Draw, guess, and have fun with friends
           </p>
           <button
             onClick={() => navigate('/login')}
-            className="font-raleway font-bold px-8 py-4 rounded-xl hover:scale-110 transition-all z-20"
+            className="font-raleway font-bold px-6 py-3 rounded-xl hover:scale-110 transition-all"
             style={{
               background: `linear-gradient(135deg, ${colors.primary}, ${colors.secondary})`,
               color: theme === 'dark' ? '#000' : '#fff'
@@ -355,39 +347,35 @@ const Landing = () => {
           </button>
         </div>
       ),
-      rightLabel: "Art",
-      background: 'transparent',
+      rightLabel: "ART",
     },
 
-    // Features Section
     {
-      leftLabel: "Features",
+      leftLabel: "FEATURES",
       title: (
-        <div className="flex flex-col items-center max-w-6xl">
-          <h2 className="font-orbitron text-6xl font-bold mb-16" style={{ color: colors.text }}>
+        <div className="flex flex-col items-center max-w-5xl px-4">
+          <h2 className="font-orbitron text-4xl md:text-5xl font-bold mb-10" style={{ color: colors.text }}>
             Why Choose KHELE?
           </h2>
-          <div className="grid md:grid-cols-3 gap-8 w-full">
+          <div className="grid md:grid-cols-3 gap-6 w-full">
             {[
-              { icon: '⚡', title: 'Lightning Fast', description: 'Real-time gameplay with zero lag' },
-              { icon: '🔒', title: 'Secure & Safe', description: 'Enterprise-grade security' },
-              { icon: '🌍', title: 'Global Community', description: 'Connect with players worldwide' },
-              { icon: '🎯', title: 'Fair Play', description: 'Advanced anti-cheat systems' },
-              { icon: '🏆', title: 'Leaderboards', description: 'Compete for the top spot' },
-              { icon: '💬', title: 'Live Chat', description: 'Real-time communication' }
+              { icon: '⚡', title: 'Lightning Fast', description: 'Zero lag gameplay' },
+              { icon: '🔒', title: 'Secure & Safe', description: 'Enterprise security' },
+              { icon: '🌍', title: 'Global Community', description: 'Play worldwide' },
+              { icon: '🎯', title: 'Fair Play', description: 'Anti-cheat systems' },
+              { icon: '🏆', title: 'Leaderboards', description: 'Compete globally' },
+              { icon: '💬', title: 'Live Chat', description: 'Real-time talk' }
             ].map((feature, i) => (
               <div
                 key={i}
-                className="p-6 rounded-3xl backdrop-blur-xl hover:scale-105 transition-all group"
+                className="p-5 rounded-2xl backdrop-blur-xl hover:scale-105 transition-all"
                 style={{
-                  background: `${colors.surface}80`,
+                  background: `${colors.surface}60`,
                   border: `1px solid ${colors.primary}30`
                 }}
               >
-                <div className="text-5xl mb-4 group-hover:scale-110 transition-transform">
-                  {feature.icon}
-                </div>
-                <h3 className="font-orbitron text-xl font-bold mb-2" style={{ color: colors.primary }}>
+                <div className="text-4xl mb-3">{feature.icon}</div>
+                <h3 className="font-orbitron text-lg font-bold mb-2" style={{ color: colors.primary }}>
                   {feature.title}
                 </h3>
                 <p className="font-raleway text-sm" style={{ color: colors.textSecondary }}>
@@ -398,19 +386,17 @@ const Landing = () => {
           </div>
         </div>
       ),
-      rightLabel: "Power",
-      background: 'transparent',
+      rightLabel: "POWER",
     },
 
-    // Stats Section
     {
-      leftLabel: "Community",
+      leftLabel: "COMMUNITY",
       title: (
-        <div className="flex flex-col items-center">
-          <h2 className="font-orbitron text-6xl font-bold mb-16" style={{ color: colors.text }}>
-            Join Our Growing Community
+        <div className="flex flex-col items-center px-4">
+          <h2 className="font-orbitron text-4xl md:text-5xl font-bold mb-10" style={{ color: colors.text }}>
+            Join Our Community
           </h2>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-12 max-w-4xl">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-3xl">
             {[
               { value: '10K+', label: 'Active Players', icon: '👥' },
               { value: '50K+', label: 'Games Played', icon: '🎮' },
@@ -418,17 +404,17 @@ const Landing = () => {
             ].map((stat, i) => (
               <div
                 key={i}
-                className="p-8 rounded-3xl backdrop-blur-xl transform hover:scale-110 transition-all"
+                className="p-6 rounded-2xl backdrop-blur-xl hover:scale-110 transition-all"
                 style={{
-                  background: `${colors.surface}80`,
+                  background: `${colors.surface}60`,
                   border: `2px solid ${colors.primary}40`
                 }}
               >
-                <div className="text-6xl mb-4">{stat.icon}</div>
-                <div className="font-orbitron text-5xl font-bold mb-3" style={{ color: colors.primary }}>
+                <div className="text-5xl mb-3">{stat.icon}</div>
+                <div className="font-orbitron text-4xl font-bold mb-2" style={{ color: colors.primary }}>
                   {stat.value}
                 </div>
-                <div className="font-raleway text-lg" style={{ color: colors.textSecondary }}>
+                <div className="font-raleway text-base" style={{ color: colors.textSecondary }}>
                   {stat.label}
                 </div>
               </div>
@@ -436,39 +422,37 @@ const Landing = () => {
           </div>
         </div>
       ),
-      rightLabel: "Together",
-      background: 'transparent',
+      rightLabel: "TOGETHER",
     },
 
-    // CTA Section
     {
-      leftLabel: "Ready",
+      leftLabel: "READY",
       title: (
-        <div className="flex flex-col items-center">
-          <h2 className="font-orbitron text-7xl font-bold mb-8" style={{ color: colors.text }}>
+        <div className="flex flex-col items-center px-4">
+          <h2 className="font-orbitron text-5xl md:text-6xl font-bold mb-6" style={{ color: colors.text }}>
             Ready to Play?
           </h2>
-          <p className="font-poppins text-3xl mb-12 max-w-2xl" style={{ color: colors.textSecondary }}>
-            Join thousands of players in the ultimate gaming experience
+          <p className="font-poppins text-2xl mb-10 max-w-xl text-center" style={{ color: colors.textSecondary }}>
+            Join thousands of players worldwide
           </p>
           <button
             onClick={() => navigate('/login')}
-            className="font-raleway font-bold px-16 py-6 rounded-2xl text-2xl hover:scale-110 transition-all shadow-2xl z-20"
+            className="font-raleway font-bold px-12 py-5 rounded-2xl text-xl hover:scale-110 transition-all"
             style={{
               background: `linear-gradient(135deg, ${colors.primary}, ${colors.secondary})`,
               color: theme === 'dark' ? '#000' : '#fff',
-              boxShadow: `0 0 60px ${colors.glow}`
+              boxShadow: `0 0 50px ${colors.glow}80`
             }}
           >
             Start Your Journey
           </button>
           
-          <div className="mt-20 flex gap-8 flex-wrap justify-center">
+          <div className="mt-16 flex gap-6 flex-wrap justify-center">
             {['Twitter', 'Discord', 'Instagram', 'YouTube'].map((social) => (
               <a
                 key={social}
                 href="#"
-                className="font-poppins text-xl hover:scale-110 transition-transform z-20"
+                className="font-poppins text-base hover:scale-110 transition-transform"
                 style={{ color: colors.textSecondary }}
               >
                 {social}
@@ -477,22 +461,23 @@ const Landing = () => {
           </div>
         </div>
       ),
-      rightLabel: "Join",
-      background: 'transparent',
+      rightLabel: "JOIN",
     },
   ];
 
-  // Navigation Header
   const header = (
-    <div className="flex items-center justify-between w-full px-8 py-4 backdrop-blur-md z-50" style={{ background: `${colors.surface}40` }}>
-      <h2 className="font-orbitron text-3xl font-bold" style={{ color: colors.primary }}>
+    <div 
+      className="w-full px-6 py-4 backdrop-blur-md flex items-center justify-between" 
+      style={{ background: `${colors.surface}30` }}
+    >
+      <h2 className="font-orbitron text-2xl font-bold" style={{ color: colors.primary }}>
         KHELE
       </h2>
       
-      <div className="flex items-center gap-6">
+      <div className="flex items-center gap-4">
         <button
           onClick={toggleTheme}
-          className="p-2 rounded-xl hover:scale-110 transition-all text-2xl z-50"
+          className="p-2 rounded-lg hover:scale-110 transition-all text-xl"
           style={{ backgroundColor: colors.surface }}
         >
           {theme === 'dark' ? '🌞' : '🌙'}
@@ -500,7 +485,7 @@ const Landing = () => {
         
         <button
           onClick={() => navigate('/login')}
-          className="font-raleway font-semibold px-6 py-3 rounded-xl hover:scale-105 transition-all z-50"
+          className="font-raleway font-semibold px-5 py-2 rounded-lg hover:scale-105 transition-all text-sm"
           style={{
             background: `linear-gradient(135deg, ${colors.primary}, ${colors.secondary})`,
             color: theme === 'dark' ? '#000' : '#fff'
@@ -513,8 +498,8 @@ const Landing = () => {
   );
 
   const footer = (
-    <div className="text-center py-4 backdrop-blur-md z-50" style={{ background: `${colors.surface}40` }}>
-      <p className="font-raleway text-sm" style={{ color: colors.textSecondary }}>
+    <div className="text-center py-3 backdrop-blur-md" style={{ background: `${colors.surface}30` }}>
+      <p className="font-raleway text-xs" style={{ color: colors.textSecondary }}>
         © 2025 KHELE. All rights reserved.
       </p>
     </div>
@@ -530,7 +515,7 @@ const Landing = () => {
 
   return (
     <div className="relative w-full h-screen overflow-hidden" style={{ backgroundColor: colors.background }}>
-      {/* GridScan Background - THREE.JS */}
+      {/* GridScan Background */}
       <div className="fixed inset-0 z-0">
         <GridScan
           sensitivity={0.55}
