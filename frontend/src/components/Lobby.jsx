@@ -1,7 +1,9 @@
 import { useState } from 'react';
+import { useTheme } from '../context/ThemeContext';
 import { createRoom, joinRoom } from '../utils/api';
 
 export default function Lobby({ onRoomJoined, onLogout }) {
+  const { colors, theme, toggleTheme } = useTheme();
   const [roomCode, setRoomCode] = useState('');
   const [error, setError] = useState('');
   const [showGameSelection, setShowGameSelection] = useState(false);
@@ -14,7 +16,6 @@ export default function Lobby({ onRoomJoined, onLogout }) {
       onRoomJoined(response.roomCode, response.room, gameType);
     } catch (err) {
       setError(err.response?.data?.error || 'Failed to create room');
-      console.error('Create room error:', err);
     }
   };
 
@@ -29,31 +30,74 @@ export default function Lobby({ onRoomJoined, onLogout }) {
       onRoomJoined(response.room.roomCode, response.room, response.room.gameType);
     } catch (err) {
       setError(err.response?.data?.error || 'Failed to join room');
-      console.error('Join room error:', err);
     }
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-purple-600 via-pink-500 to-red-500 flex items-center justify-center p-4">
-      <div className="bg-white rounded-3xl shadow-2xl p-8 w-full max-w-4xl">
+    <div 
+      className="min-h-screen flex items-center justify-center p-4"
+      style={{ backgroundColor: colors.background }}
+    >
+      <div 
+        className="rounded-3xl shadow-2xl p-8 w-full max-w-4xl border"
+        style={{
+          background: colors.surface,
+          borderColor: `${colors.primary}30`,
+          backdropFilter: 'blur(20px)'
+        }}
+      >
         <div className="flex justify-between items-center mb-8">
-          <h1 className="text-4xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-purple-600 to-pink-600">
-            Game Lobby
-          </h1>
-          <button
-            onClick={onLogout}
-            className="px-4 py-2 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded-lg transition-colors"
-          >
-            Logout
-          </button>
+          <div>
+            <h1 
+              className="text-4xl font-orbitron font-black mb-2"
+              style={{
+                background: `linear-gradient(135deg, ${colors.primary}, ${colors.secondary})`,
+                WebkitBackgroundClip: 'text',
+                WebkitTextFillColor: 'transparent'
+              }}
+            >
+              Game Lobby
+            </h1>
+            <p className="font-poppins" style={{ color: colors.textSecondary }}>
+              Welcome, {localStorage.getItem('username')}!
+            </p>
+          </div>
+          
+          <div className="flex gap-3">
+            <button
+              onClick={toggleTheme}
+              className="p-2 rounded-lg border hover:scale-110 transition-all"
+              style={{
+                background: colors.surface,
+                borderColor: `${colors.primary}30`
+              }}
+            >
+              <span className="text-xl">{theme === 'dark' ? '🌞' : '🌙'}</span>
+            </button>
+            
+            <button
+              onClick={onLogout}
+              className="px-4 py-2 rounded-lg font-raleway font-semibold transition-colors border"
+              style={{
+                background: 'rgba(239, 68, 68, 0.1)',
+                borderColor: 'rgba(239, 68, 68, 0.5)',
+                color: '#ef4444'
+              }}
+            >
+              Logout
+            </button>
+          </div>
         </div>
 
-        <p className="text-gray-600 mb-8">
-          Welcome, {localStorage.getItem('username')}!
-        </p>
-
         {error && (
-          <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded-lg mb-6">
+          <div 
+            className="px-4 py-3 rounded-lg mb-6 border"
+            style={{
+              background: 'rgba(220, 38, 38, 0.1)',
+              borderColor: 'rgba(220, 38, 38, 0.5)',
+              color: '#ef4444'
+            }}
+          >
             {error}
           </div>
         )}
@@ -61,32 +105,56 @@ export default function Lobby({ onRoomJoined, onLogout }) {
         {/* Game Selection Modal */}
         {showGameSelection && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-2xl p-8 max-w-2xl w-full">
-              <h2 className="text-3xl font-bold text-gray-800 mb-6">Select a Game</h2>
+            <div 
+              className="rounded-2xl p-8 max-w-2xl w-full border"
+              style={{
+                background: colors.surface,
+                borderColor: `${colors.primary}30`,
+                backdropFilter: 'blur(20px)'
+              }}
+            >
+              <h2 className="text-3xl font-orbitron font-black mb-6" style={{ color: colors.text }}>
+                Select a Game
+              </h2>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {/* Scribble Card */}
                 <button
                   onClick={() => handleCreateRoom('scribble')}
-                  className="group bg-gradient-to-br from-blue-500 to-cyan-400 rounded-xl p-6 text-white hover:scale-105 transition-transform shadow-lg"
+                  className="rounded-xl p-6 hover:scale-105 transition-transform border"
+                  style={{
+                    background: `linear-gradient(135deg, ${colors.secondary}, ${colors.accent})`,
+                    borderColor: 'rgba(255, 255, 255, 0.1)'
+                  }}
                 >
                   <div className="text-6xl mb-4">✏️</div>
-                  <h3 className="text-2xl font-bold mb-2">Scribble</h3>
-                  <p className="text-blue-100">Draw and guess words with friends!</p>
+                  <h3 className="text-2xl font-orbitron font-bold mb-2 text-white">Scribble</h3>
+                  <p className="font-poppins text-sm" style={{ color: 'rgba(255, 255, 255, 0.8)' }}>
+                    Draw and guess words with friends!
+                  </p>
                 </button>
 
-                {/* UNO Card */}
                 <button
                   onClick={() => handleCreateRoom('uno')}
-                  className="group bg-gradient-to-br from-red-500 to-orange-400 rounded-xl p-6 text-white hover:scale-105 transition-transform shadow-lg"
+                  className="rounded-xl p-6 hover:scale-105 transition-transform border"
+                  style={{
+                    background: `linear-gradient(135deg, ${colors.primary}, ${colors.accent})`,
+                    borderColor: 'rgba(255, 255, 255, 0.1)'
+                  }}
                 >
                   <div className="text-6xl mb-4">🃏</div>
-                  <h3 className="text-2xl font-bold mb-2">UNO</h3>
-                  <p className="text-red-100">Classic card game action!</p>
+                  <h3 className="text-2xl font-orbitron font-bold mb-2 text-white">UNO</h3>
+                  <p className="font-poppins text-sm" style={{ color: 'rgba(255, 255, 255, 0.8)' }}>
+                    Classic card game action!
+                  </p>
                 </button>
               </div>
               <button
                 onClick={() => setShowGameSelection(false)}
-                className="mt-6 w-full py-3 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded-lg transition-colors"
+                className="mt-6 w-full py-3 rounded-lg font-raleway font-semibold transition-colors border"
+                style={{
+                  background: 'rgba(0, 0, 0, 0.3)',
+                  borderColor: `${colors.primary}30`,
+                  color: colors.text
+                }}
               >
                 Cancel
               </button>
@@ -96,38 +164,79 @@ export default function Lobby({ onRoomJoined, onLogout }) {
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
           {/* Create Room */}
-          <div className="bg-gradient-to-br from-blue-50 to-purple-50 rounded-2xl p-6 border-2 border-blue-200">
-            <div className="w-16 h-16 bg-blue-500 rounded-full flex items-center justify-center mx-auto mb-4">
+          <div 
+            className="rounded-2xl p-6 border-2"
+            style={{
+              background: `${colors.primary}10`,
+              borderColor: `${colors.primary}40`
+            }}
+          >
+            <div 
+              className="w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4"
+              style={{ background: colors.primary }}
+            >
               <span className="text-3xl">➕</span>
             </div>
-            <h2 className="text-2xl font-bold text-gray-800 mb-2 text-center">Create Room</h2>
-            <p className="text-gray-600 mb-6 text-center">Start a new game session</p>
+            <h2 className="text-2xl font-orbitron font-bold mb-2 text-center" style={{ color: colors.text }}>
+              Create Room
+            </h2>
+            <p className="font-poppins mb-6 text-center" style={{ color: colors.textSecondary }}>
+              Start a new game session
+            </p>
             <button
               onClick={() => setShowGameSelection(true)}
-              className="w-full bg-gradient-to-r from-blue-500 to-purple-600 text-white py-3 px-6 rounded-lg font-semibold hover:from-blue-600 hover:to-purple-700 transition-all transform hover:scale-105 shadow-lg"
+              className="w-full py-3 rounded-lg font-raleway font-bold transition-all hover:scale-105"
+              style={{
+                background: `linear-gradient(135deg, ${colors.primary}, ${colors.secondary})`,
+                color: '#000',
+                boxShadow: `0 0 40px ${colors.glow}60`
+              }}
             >
               Create New Room
             </button>
           </div>
 
           {/* Join Room */}
-          <div className="bg-gradient-to-br from-pink-50 to-purple-50 rounded-2xl p-6 border-2 border-pink-200">
-            <div className="w-16 h-16 bg-purple-500 rounded-full flex items-center justify-center mx-auto mb-4">
+          <div 
+            className="rounded-2xl p-6 border-2"
+            style={{
+              background: `${colors.secondary}10`,
+              borderColor: `${colors.secondary}40`
+            }}
+          >
+            <div 
+              className="w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4"
+              style={{ background: colors.secondary }}
+            >
               <span className="text-3xl">🚪</span>
             </div>
-            <h2 className="text-2xl font-bold text-gray-800 mb-2 text-center">Join Room</h2>
-            <p className="text-gray-600 mb-6 text-center">Enter a 6-character code</p>
+            <h2 className="text-2xl font-orbitron font-bold mb-2 text-center" style={{ color: colors.text }}>
+              Join Room
+            </h2>
+            <p className="font-poppins mb-6 text-center" style={{ color: colors.textSecondary }}>
+              Enter a 6-character code
+            </p>
             <input
               type="text"
               placeholder="9MALUH"
               value={roomCode}
               onChange={(e) => setRoomCode(e.target.value.toUpperCase())}
               maxLength={6}
-              className="w-full px-4 py-3 border-2 border-pink-200 rounded-lg mb-4 text-center text-2xl font-mono uppercase tracking-widest focus:outline-none focus:border-purple-500"
+              className="w-full px-4 py-3 border-2 rounded-lg mb-4 text-center text-2xl font-mono uppercase tracking-widest focus:outline-none"
+              style={{
+                background: 'rgba(0, 0, 0, 0.3)',
+                borderColor: `${colors.secondary}40`,
+                color: colors.text
+              }}
             />
             <button
               onClick={handleJoinRoom}
-              className="w-full bg-gradient-to-r from-purple-500 to-pink-600 text-white py-3 px-6 rounded-lg font-semibold hover:from-purple-600 hover:to-pink-500 transition-all transform hover:scale-105 shadow-lg"
+              className="w-full py-3 rounded-lg font-raleway font-bold transition-all hover:scale-105"
+              style={{
+                background: `linear-gradient(135deg, ${colors.secondary}, ${colors.accent})`,
+                color: '#000',
+                boxShadow: `0 0 40px ${colors.secondary}60`
+              }}
             >
               Join Room
             </button>

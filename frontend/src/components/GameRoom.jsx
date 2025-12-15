@@ -1,9 +1,11 @@
 import { useState, useEffect, useRef } from 'react';
 import { useWebSocket } from '../context/WebSocketContext';
+import { useTheme } from '../context/ThemeContext';
 import ScribbleGame from './ScribbleGame';
 import UNOGame from './UNOGame';
 
 export default function GameRoom({ roomCode, username, initialRoomData, preSelectedGame, onLeaveRoom }) {
+  const { colors } = useTheme();
   const [room, setRoom] = useState(initialRoomData);
   const [gameStarted, setGameStarted] = useState(false);
   const [currentGame, setCurrentGame] = useState(preSelectedGame || null);
@@ -239,59 +241,93 @@ export default function GameRoom({ roomCode, username, initialRoomData, preSelec
 
   // Lobby view
   return (
-    <div className="min-h-screen bg-gradient-to-br from-purple-600 via-blue-500 to-pink-500 p-8">
+    <div 
+      className="min-h-screen p-8"
+      style={{ backgroundColor: colors.background }}
+    >
       <div className="max-w-4xl mx-auto">
-        <div className="bg-white rounded-2xl shadow-2xl p-8">
+        <div 
+          className="rounded-2xl shadow-2xl p-8 border"
+          style={{
+            background: colors.surface,
+            borderColor: `${colors.primary}30`,
+            backdropFilter: 'blur(20px)'
+          }}
+        >
           {/* Header */}
           <div className="flex justify-between items-center mb-8">
             <div>
-              <h1 className="text-4xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-purple-600 to-blue-600">
+              <h1 
+                className="text-4xl font-orbitron font-black mb-2"
+                style={{
+                  background: `linear-gradient(135deg, ${colors.primary}, ${colors.secondary})`,
+                  WebkitBackgroundClip: 'text',
+                  WebkitTextFillColor: 'transparent'
+                }}
+              >
                 Game Room
               </h1>
-              <p className="text-gray-600 mt-2">Room Code: <span className="font-mono font-bold text-lg">{roomCode}</span></p>
+              <p className="font-poppins" style={{ color: colors.textSecondary }}>
+                Room Code: <span className="font-mono font-bold text-lg" style={{ color: colors.text }}>{roomCode}</span>
+              </p>
             </div>
             <button
               onClick={onLeaveRoom}
-              className="px-6 py-3 bg-red-500 hover:bg-red-600 text-white rounded-lg font-semibold transition-all transform hover:scale-105"
+              className="px-6 py-3 rounded-lg font-raleway font-bold transition-all hover:scale-105 border"
+              style={{
+                background: 'rgba(239, 68, 68, 0.1)',
+                borderColor: 'rgba(239, 68, 68, 0.5)',
+                color: '#ef4444'
+              }}
             >
               Leave Room
             </button>
           </div>
 
           {/* Game Type */}
-          <div className="mb-8 p-4 bg-gradient-to-r from-purple-100 to-blue-100 rounded-lg">
-            <p className="text-lg font-semibold text-gray-800">
-              Game: <span className="text-purple-600 capitalize">{room?.gameType || 'Unknown'}</span>
+          <div 
+            className="mb-8 p-4 rounded-lg border"
+            style={{
+              background: `${colors.primary}10`,
+              borderColor: `${colors.primary}40`
+            }}
+          >
+            <p className="text-lg font-raleway font-semibold" style={{ color: colors.text }}>
+              Game: <span className="capitalize" style={{ color: colors.primary }}>{room?.gameType || 'Unknown'}</span>
             </p>
           </div>
 
           {/* Players */}
           <div className="mb-8">
-            <h2 className="text-2xl font-bold mb-4 text-gray-800">Players ({room?.players?.length || 0})</h2>
+            <h2 className="text-2xl font-orbitron font-bold mb-4" style={{ color: colors.text }}>
+              Players ({room?.players?.length || 0})
+            </h2>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {room?.players?.map((player, index) => (
                 <div
                   key={player.username || index}
-                  className={`p-4 rounded-lg border-2 ${
-                    player.username === room?.host
-                      ? 'bg-yellow-50 border-yellow-400'
-                      : 'bg-gray-50 border-gray-300'
-                  }`}
+                  className="p-4 rounded-lg border-2"
+                  style={{
+                    background: player.username === room?.host 
+                      ? `${colors.primary}10`
+                      : 'rgba(0, 0, 0, 0.3)',
+                    borderColor: player.username === room?.host
+                      ? colors.primary
+                      : `${colors.primary}30`
+                  }}
                 >
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <span className="text-2xl">
-                        {player.username === room?.host ? '👑' : '👤'}
-                      </span>
-                      <div>
-                        <p className="font-bold text-lg">
-                          {player.username}
-                          {player.username === username && ' (You)'}
-                        </p>
-                        {player.username === room?.host && (
-                          <p className="text-sm text-yellow-600">Host</p>
-                        )}
-                      </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-2xl">
+                      {player.username === room?.host ? '👑' : '👤'}
+                    </span>
+                    <div>
+                      <p className="font-raleway font-bold" style={{ color: colors.text }}>
+                        {player.username}
+                        {player.username === username && ' (You)'}
+                      </p>
+                      {player.username === room?.host && (
+                        <p className="text-sm font-poppins" style={{ color: colors.primary }}>Host</p>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -305,11 +341,16 @@ export default function GameRoom({ roomCode, username, initialRoomData, preSelec
               <button
                 onClick={handleStartGame}
                 disabled={!room?.players || room.players.length < 2}
-                className={`px-8 py-4 rounded-lg font-bold text-lg transition-all transform hover:scale-105 ${
-                  room?.players && room.players.length >= 2
-                    ? 'bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600 text-white shadow-lg'
-                    : 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                }`}
+                className="px-8 py-4 rounded-lg font-raleway font-bold text-lg transition-all hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed"
+                style={{
+                  background: room?.players && room.players.length >= 2
+                    ? `linear-gradient(135deg, ${colors.primary}, ${colors.secondary})`
+                    : 'rgba(128, 128, 128, 0.3)',
+                  color: room?.players && room.players.length >= 2 ? '#000' : colors.textSecondary,
+                  boxShadow: room?.players && room.players.length >= 2 
+                    ? `0 0 40px ${colors.glow}60` 
+                    : 'none'
+                }}
               >
                 {room?.players && room.players.length < 2
                   ? 'Need at least 2 players'
@@ -319,9 +360,15 @@ export default function GameRoom({ roomCode, username, initialRoomData, preSelec
           )}
 
           {username !== room?.host && !gameStarted && (
-            <div className="text-center p-4 bg-blue-50 rounded-lg">
-              <p className="text-blue-800 font-semibold">
-                Waiting for <span className="text-blue-600">{room?.host}</span> to start the game...
+            <div 
+              className="text-center p-4 rounded-lg border"
+              style={{
+                background: `${colors.secondary}10`,
+                borderColor: `${colors.secondary}40`
+              }}
+            >
+              <p className="font-poppins font-semibold" style={{ color: colors.text }}>
+                Waiting for <span style={{ color: colors.primary }}>{room?.host}</span> to start the game...
               </p>
             </div>
           )}

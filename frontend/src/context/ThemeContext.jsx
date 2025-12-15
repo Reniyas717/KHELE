@@ -27,23 +27,27 @@ export const ThemeProvider = ({ children }) => {
   const colors = {
     dark: {
       primary: '#00ff88',
-      secondary: '#00d4ff',
-      accent: '#ff00ff',
-      background: '#0a0a0f',
-      surface: '#1a1a2e',
+      secondary: '#FF9FFC',
+      accent: '#00d4ff',
+      background: '#000000',
+      surface: 'rgba(0, 0, 0, 0.6)',
       text: '#ffffff',
       textSecondary: '#a0a0b0',
-      glow: 'rgba(0, 255, 136, 0.3)',
+      glow: '#00ff88',
+      gridColor: '#00ff88',
+      scanColor: '#FF9FFC',
     },
     light: {
       primary: '#00cc70',
-      secondary: '#0099cc',
-      accent: '#cc00cc',
+      secondary: '#cc00ff',
+      accent: '#0099cc',
       background: '#f5f5f7',
-      surface: '#ffffff',
+      surface: 'rgba(255, 255, 255, 0.9)',
       text: '#1a1a2e',
       textSecondary: '#666677',
-      glow: 'rgba(0, 204, 112, 0.2)',
+      glow: '#00cc70',
+      gridColor: '#00cc70',
+      scanColor: '#cc00ff',
     }
   };
 

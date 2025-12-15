@@ -1,7 +1,9 @@
 import { useState, useEffect, useRef } from 'react';
 import { useWebSocket } from '../context/WebSocketContext';
+import { useTheme } from '../context/ThemeContext';
 
 export default function ScribbleGame({ roomCode, username, players, initialGameState, onLeaveRoom }) {
+  const { colors } = useTheme();
   const [gameState, setGameState] = useState(initialGameState);
   const [isDrawing, setIsDrawing] = useState(false);
   const canvasRef = useRef(null);
@@ -250,10 +252,25 @@ export default function ScribbleGame({ roomCode, username, players, initialGameS
   // Show loading state while waiting for game state
   if (!gameState) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-blue-600 via-purple-500 to-pink-500 flex items-center justify-center">
-        <div className="bg-white rounded-3xl shadow-2xl p-8 text-center">
-          <div className="animate-spin rounded-full h-16 w-16 border-b-4 border-blue-500 mx-auto mb-4"></div>
-          <h2 className="text-2xl font-bold text-gray-800">Loading Scribble...</h2>
+      <div 
+        className="min-h-screen flex items-center justify-center"
+        style={{ backgroundColor: colors.background }}
+      >
+        <div 
+          className="rounded-3xl shadow-2xl p-8 text-center border"
+          style={{
+            background: colors.surface,
+            borderColor: `${colors.primary}30`,
+            backdropFilter: 'blur(20px)'
+          }}
+        >
+          <div 
+            className="animate-spin rounded-full h-16 w-16 border-b-4 mx-auto mb-4"
+            style={{ borderColor: colors.secondary }}
+          ></div>
+          <h2 className="text-2xl font-orbitron font-bold" style={{ color: colors.text }}>
+            Loading Scribble...
+          </h2>
         </div>
       </div>
     );
@@ -262,19 +279,42 @@ export default function ScribbleGame({ roomCode, username, players, initialGameS
   // Word Selection Modal
   if (showWordSelection && isMyTurn()) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-blue-600 via-purple-500 to-pink-500 flex items-center justify-center p-4">
-        <div className="bg-white rounded-3xl shadow-2xl p-12 max-w-2xl w-full">
-          <h2 className="text-4xl font-bold text-center mb-4 text-transparent bg-clip-text bg-gradient-to-r from-blue-600 to-purple-600">
+      <div 
+        className="min-h-screen flex items-center justify-center p-4"
+        style={{ backgroundColor: colors.background }}
+      >
+        <div 
+          className="rounded-3xl shadow-2xl p-12 max-w-2xl w-full border"
+          style={{
+            background: colors.surface,
+            borderColor: `${colors.secondary}30`,
+            backdropFilter: 'blur(20px)'
+          }}
+        >
+          <h2 
+            className="text-4xl font-orbitron font-bold text-center mb-4"
+            style={{
+              background: `linear-gradient(135deg, ${colors.secondary}, ${colors.accent})`,
+              WebkitBackgroundClip: 'text',
+              WebkitTextFillColor: 'transparent'
+            }}
+          >
             Choose a Word to Draw
           </h2>
-          <p className="text-center text-gray-600 mb-8">Pick one word from the options below</p>
+          <p className="text-center font-poppins mb-8" style={{ color: colors.textSecondary }}>
+            Pick one word from the options below
+          </p>
           
           <div className="grid grid-cols-1 gap-4">
             {gameState.wordOptions?.map((word, index) => (
               <button
                 key={index}
                 onClick={() => handleWordSelect(word)}
-                className="p-6 bg-gradient-to-r from-blue-500 to-purple-500 hover:from-blue-600 hover:to-purple-600 text-white rounded-2xl text-2xl font-bold transition-all transform hover:scale-105 shadow-lg"
+                className="p-6 rounded-2xl text-2xl font-orbitron font-bold transition-all transform hover:scale-105 shadow-lg"
+                style={{
+                  background: `linear-gradient(135deg, ${colors.secondary}, ${colors.accent})`,
+                  color: '#000'
+                }}
               >
                 {word}
               </button>
@@ -289,20 +329,41 @@ export default function ScribbleGame({ roomCode, username, players, initialGameS
   const maxRounds = gameState.maxRounds || 3;
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-600 via-purple-500 to-pink-500 p-4">
+    <div 
+      className="min-h-screen p-4"
+      style={{ backgroundColor: colors.background }}
+    >
       <div className="max-w-7xl mx-auto">
         {/* Header */}
-        <div className="bg-white rounded-2xl shadow-xl p-4 mb-4">
+        <div 
+          className="rounded-2xl shadow-xl p-4 mb-4 border"
+          style={{
+            background: colors.surface,
+            borderColor: `${colors.secondary}30`,
+            backdropFilter: 'blur(20px)'
+          }}
+        >
           <div className="flex justify-between items-center">
             <div>
-              <h1 className="text-3xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-blue-600 to-purple-600">
+              <h1 
+                className="text-3xl font-orbitron font-black"
+                style={{
+                  background: `linear-gradient(135deg, ${colors.secondary}, ${colors.accent})`,
+                  WebkitBackgroundClip: 'text',
+                  WebkitTextFillColor: 'transparent'
+                }}
+              >
                 ✏️ Scribble
               </h1>
-              <p className="text-sm text-gray-600">Room: {roomCode}</p>
+              <p className="text-sm font-poppins" style={{ color: colors.textSecondary }}>
+                Room: {roomCode}
+              </p>
             </div>
             <div className="text-center">
-              <p className="text-lg font-bold text-gray-800">Round {roundNumber}/{maxRounds}</p>
-              <p className="text-sm text-gray-600">
+              <p className="text-lg font-orbitron font-bold" style={{ color: colors.text }}>
+                Round {roundNumber}/{maxRounds}
+              </p>
+              <p className="text-sm font-poppins" style={{ color: colors.textSecondary }}>
                 {isMyTurn() 
                   ? gameState.currentWord 
                     ? `Your word: ${gameState.currentWord}` 
@@ -314,7 +375,12 @@ export default function ScribbleGame({ roomCode, username, players, initialGameS
             </div>
             <button
               onClick={onLeaveRoom}
-              className="px-4 py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg transition-colors"
+              className="px-4 py-2 rounded-lg font-raleway font-semibold transition-colors border"
+              style={{
+                background: 'rgba(239, 68, 68, 0.1)',
+                borderColor: 'rgba(239, 68, 68, 0.5)',
+                color: '#ef4444'
+              }}
             >
               Leave Game
             </button>
@@ -322,34 +388,53 @@ export default function ScribbleGame({ roomCode, username, players, initialGameS
         </div>
 
         {/* Players Scoreboard */}
-        <div className="bg-white rounded-2xl shadow-xl p-4 mb-4">
-          <h2 className="text-lg font-bold mb-3">Players</h2>
+        <div 
+          className="rounded-2xl shadow-xl p-4 mb-4 border"
+          style={{
+            background: colors.surface,
+            borderColor: `${colors.secondary}30`,
+            backdropFilter: 'blur(20px)'
+          }}
+        >
+          <h2 className="text-lg font-orbitron font-bold mb-3" style={{ color: colors.text }}>
+            Players
+          </h2>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
             {gameState.players?.map((player) => (
               <div
                 key={player.username}
-                className={`p-3 rounded-lg ${
-                  player.username === gameState.currentDrawer
-                    ? 'bg-blue-100 border-2 border-blue-500'
+                className="p-3 rounded-lg border-2"
+                style={{
+                  background: player.username === gameState.currentDrawer
+                    ? `${colors.secondary}20`
                     : player.hasGuessed
-                    ? 'bg-green-100 border-2 border-green-500'
-                    : 'bg-gray-100'
-                }`}
+                    ? `${colors.primary}20`
+                    : 'rgba(0, 0, 0, 0.3)',
+                  borderColor: player.username === gameState.currentDrawer
+                    ? colors.secondary
+                    : player.hasGuessed
+                    ? colors.primary
+                    : `${colors.primary}30`
+                }}
               >
                 <div className="flex items-center justify-between">
-                  <span className="font-semibold">
+                  <span className="font-raleway font-semibold" style={{ color: colors.text }}>
                     {player.username}
                     {player.username === username && ' (You)'}
                   </span>
-                  <span className="text-xl font-bold text-blue-500">
+                  <span className="text-xl font-bold" style={{ color: colors.secondary }}>
                     {player.score || 0}
                   </span>
                 </div>
                 {player.username === gameState.currentDrawer && (
-                  <p className="text-xs text-blue-600 mt-1">✏️ Drawing</p>
+                  <p className="text-xs font-poppins mt-1" style={{ color: colors.secondary }}>
+                    ✏️ Drawing
+                  </p>
                 )}
                 {player.hasGuessed && player.username !== gameState.currentDrawer && (
-                  <p className="text-xs text-green-600 mt-1">✅ Guessed!</p>
+                  <p className="text-xs font-poppins mt-1" style={{ color: colors.primary }}>
+                    ✅ Guessed!
+                  </p>
                 )}
               </div>
             ))}
@@ -359,9 +444,16 @@ export default function ScribbleGame({ roomCode, username, players, initialGameS
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
           {/* Canvas */}
           <div className="lg:col-span-2">
-            <div className="bg-white rounded-2xl shadow-xl p-4">
+            <div 
+              className="rounded-2xl shadow-xl p-4 border"
+              style={{
+                background: colors.surface,
+                borderColor: `${colors.secondary}30`,
+                backdropFilter: 'blur(20px)'
+              }}
+            >
               <div className="mb-4 flex justify-between items-center">
-                <h2 className="text-xl font-bold">
+                <h2 className="text-xl font-orbitron font-bold" style={{ color: colors.text }}>
                   {isMyTurn() 
                     ? gameState?.drawingStarted 
                       ? '🎨 Draw your word!' 
@@ -371,7 +463,12 @@ export default function ScribbleGame({ roomCode, username, players, initialGameS
                 {isMyTurn() && gameState?.drawingStarted && (
                   <button
                     onClick={handleClearCanvas}
-                    className="px-4 py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg transition-colors"
+                    className="px-4 py-2 rounded-lg font-raleway font-semibold transition-colors border"
+                    style={{
+                      background: 'rgba(239, 68, 68, 0.1)',
+                      borderColor: 'rgba(239, 68, 68, 0.5)',
+                      color: '#ef4444'
+                    }}
                   >
                     Clear Canvas
                   </button>
@@ -385,43 +482,66 @@ export default function ScribbleGame({ roomCode, username, players, initialGameS
                 onMouseUp={stopDrawing}
                 onMouseMove={draw}
                 onMouseLeave={stopDrawing}
-                className={`border-2 border-gray-300 rounded-lg w-full bg-white ${
-                  canDraw ? 'cursor-crosshair' : 'cursor-not-allowed'
-                }`}
-                style={{ maxHeight: '600px' }}
+                className="border-2 rounded-lg w-full bg-white"
+                style={{ 
+                  maxHeight: '600px',
+                  borderColor: `${colors.secondary}40`,
+                  cursor: canDraw ? 'crosshair' : 'not-allowed'
+                }}
               />
             </div>
           </div>
 
-          {/* Chat & Guess - Fixed height with scrollable chat */}
+          {/* Chat & Guess */}
           <div className="lg:col-span-1">
-            <div className="bg-white rounded-2xl shadow-xl p-4 flex flex-col" style={{ height: '680px' }}>
-              <h2 className="text-xl font-bold mb-3">Chat</h2>
+            <div 
+              className="rounded-2xl shadow-xl p-4 flex flex-col border"
+              style={{ 
+                height: '680px',
+                background: colors.surface,
+                borderColor: `${colors.secondary}30`,
+                backdropFilter: 'blur(20px)'
+              }}
+            >
+              <h2 className="text-xl font-orbitron font-bold mb-3" style={{ color: colors.text }}>
+                Chat
+              </h2>
               
-              {/* Scrollable chat messages - takes remaining space */}
-              <div className="flex-1 overflow-y-auto mb-3 space-y-2 bg-gray-50 rounded-lg p-3">
+              {/* Scrollable chat messages */}
+              <div 
+                className="flex-1 overflow-y-auto mb-3 space-y-2 rounded-lg p-3"
+                style={{ background: 'rgba(0, 0, 0, 0.3)' }}
+              >
                 {chatMessages.length === 0 ? (
-                  <p className="text-gray-400 text-center italic">No messages yet...</p>
+                  <p className="text-center italic" style={{ color: colors.textSecondary }}>
+                    No messages yet...
+                  </p>
                 ) : (
                   chatMessages.map((msg, index) => (
                     <div
                       key={index}
-                      className={`p-2 rounded-lg ${
-                        msg.isCorrect
-                          ? 'bg-green-100 text-green-800 font-semibold'
+                      className="p-2 rounded-lg"
+                      style={{
+                        background: msg.isCorrect
+                          ? 'rgba(34, 197, 94, 0.2)'
                           : msg.isSystem
-                          ? 'bg-yellow-100 text-yellow-800'
-                          : 'bg-white border border-gray-200'
-                      }`}
+                          ? 'rgba(234, 179, 8, 0.2)'
+                          : 'rgba(255, 255, 255, 0.1)',
+                        borderLeft: `3px solid ${msg.isCorrect ? colors.primary : msg.isSystem ? colors.accent : colors.secondary}`
+                      }}
                     >
-                      <span className="font-semibold">{msg.username}:</span>{' '}
-                      <span>{msg.message}</span>
+                      <span className="font-raleway font-semibold" style={{ color: colors.text }}>
+                        {msg.username}:
+                      </span>{' '}
+                      <span className="font-poppins" style={{ color: colors.text }}>
+                        {msg.message}
+                      </span>
                     </div>
                   ))
                 )}
               </div>
 
-              {/* Guess Input - Fixed at bottom, shown to ALL players except drawer when drawing started */}
+              {/* Guess Input */}
               {!isMyTurn() && gameState?.drawingStarted && (
                 <>
                   {!gameState?.players?.find(p => p.username === username)?.hasGuessed ? (
@@ -431,20 +551,37 @@ export default function ScribbleGame({ roomCode, username, players, initialGameS
                         value={guess}
                         onChange={(e) => setGuess(e.target.value)}
                         placeholder="Type your guess..."
-                        className="flex-1 px-3 py-2 border-2 border-gray-300 rounded-lg focus:outline-none focus:border-blue-500"
+                        className="flex-1 px-3 py-2 border-2 rounded-lg focus:outline-none font-poppins"
+                        style={{
+                          background: 'rgba(0, 0, 0, 0.3)',
+                          borderColor: `${colors.secondary}40`,
+                          color: colors.text
+                        }}
                         autoComplete="off"
                       />
                       <button
                         type="submit"
                         disabled={!guess.trim()}
-                        className="px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed font-semibold"
+                        className="px-4 py-2 rounded-lg font-raleway font-semibold transition-colors disabled:opacity-50"
+                        style={{
+                          background: guess.trim() 
+                            ? `linear-gradient(135deg, ${colors.secondary}, ${colors.accent})`
+                            : 'rgba(128, 128, 128, 0.3)',
+                          color: guess.trim() ? '#000' : colors.textSecondary
+                        }}
                       >
                         Send
                       </button>
                     </form>
                   ) : (
-                    <div className="p-3 bg-green-100 border-2 border-green-500 rounded-lg text-center">
-                      <p className="text-green-800 font-bold text-sm">
+                    <div 
+                      className="p-3 border-2 rounded-lg text-center"
+                      style={{
+                        background: `${colors.primary}20`,
+                        borderColor: colors.primary
+                      }}
+                    >
+                      <p className="font-raleway font-bold text-sm" style={{ color: colors.primary }}>
                         ✅ You guessed correctly! Waiting for others...
                       </p>
                     </div>
@@ -452,20 +589,32 @@ export default function ScribbleGame({ roomCode, username, players, initialGameS
                 </>
               )}
 
-              {/* Show word to drawer */}
               {isMyTurn() && gameState?.drawingStarted && (
-                <div className="p-3 bg-blue-100 border-2 border-blue-500 rounded-lg text-center">
-                  <p className="text-blue-800 font-bold text-sm">
+                <div 
+                  className="p-3 border-2 rounded-lg text-center"
+                  style={{
+                    background: `${colors.secondary}20`,
+                    borderColor: colors.secondary
+                  }}
+                >
+                  <p className="font-raleway font-bold text-sm" style={{ color: colors.secondary }}>
                     🎨 Your word: <span className="text-lg">{gameState?.currentWord}</span>
                   </p>
-                  <p className="text-xs text-blue-600 mt-1">Others are trying to guess!</p>
+                  <p className="text-xs font-poppins mt-1" style={{ color: colors.textSecondary }}>
+                    Others are trying to guess!
+                  </p>
                 </div>
               )}
 
-              {/* Waiting message when no drawing */}
               {!gameState?.drawingStarted && (
-                <div className="p-3 bg-gray-100 border-2 border-gray-300 rounded-lg text-center">
-                  <p className="text-gray-600 text-sm">
+                <div 
+                  className="p-3 border-2 rounded-lg text-center"
+                  style={{
+                    background: 'rgba(128, 128, 128, 0.2)',
+                    borderColor: 'rgba(128, 128, 128, 0.3)'
+                  }}
+                >
+                  <p className="font-poppins text-sm" style={{ color: colors.textSecondary }}>
                     ⏳ Waiting for {gameState?.currentDrawer} to choose a word...
                   </p>
                 </div>

@@ -1,7 +1,9 @@
 import { useState, useEffect, useRef } from 'react';
 import { useWebSocket } from '../context/WebSocketContext';
+import { useTheme } from '../context/ThemeContext';
 
 export default function UNOGame({ roomCode, username, players, initialGameState, onLeaveRoom }) {
+  const { colors } = useTheme();
   const [gameState, setGameState] = useState(null);
   const [myHand, setMyHand] = useState([]);
   const [selectedCard, setSelectedCard] = useState(null);
@@ -206,11 +208,28 @@ export default function UNOGame({ roomCode, username, players, initialGameState,
 
   if (!gameState) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-red-600 via-yellow-500 to-blue-500 flex items-center justify-center">
-        <div className="bg-white rounded-3xl shadow-2xl p-8 text-center">
-          <div className="animate-spin rounded-full h-16 w-16 border-b-4 border-red-500 mx-auto mb-4"></div>
-          <h2 className="text-2xl font-bold text-gray-800">Loading UNO Game...</h2>
-          <p className="text-gray-600 mt-2">Please wait...</p>
+      <div 
+        className="min-h-screen flex items-center justify-center"
+        style={{ backgroundColor: colors.background }}
+      >
+        <div 
+          className="rounded-3xl shadow-2xl p-8 text-center border"
+          style={{
+            background: colors.surface,
+            borderColor: `${colors.primary}30`,
+            backdropFilter: 'blur(20px)'
+          }}
+        >
+          <div 
+            className="animate-spin rounded-full h-16 w-16 border-b-4 mx-auto mb-4"
+            style={{ borderColor: colors.primary }}
+          ></div>
+          <h2 className="text-2xl font-orbitron font-bold" style={{ color: colors.text }}>
+            Loading UNO Game...
+          </h2>
+          <p className="font-poppins mt-2" style={{ color: colors.textSecondary }}>
+            Please wait...
+          </p>
         </div>
       </div>
     );
@@ -221,15 +240,15 @@ export default function UNOGame({ roomCode, username, players, initialGameState,
   const isMyTurn = currentPlayer?.name === username;
 
   const getCardColor = (card) => {
-    if (!card) return 'bg-gray-800';
+    if (!card) return colors.surface;
     const color = card.color || gameState.currentColor;
     const colorMap = {
-      'red': 'bg-red-500',
-      'blue': 'bg-blue-500',
-      'green': 'bg-green-500',
-      'yellow': 'bg-yellow-400',
+      'red': '#ef4444',
+      'blue': '#3b82f6',
+      'green': '#22c55e',
+      'yellow': '#eab308',
     };
-    return colorMap[color] || 'bg-gray-800';
+    return colorMap[color] || colors.surface;
   };
 
   const getCardDisplay = (card) => {
@@ -244,20 +263,44 @@ export default function UNOGame({ roomCode, username, players, initialGameState,
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-red-600 via-yellow-500 to-blue-500 p-4">
+    <div 
+      className="min-h-screen p-4"
+      style={{ backgroundColor: colors.background }}
+    >
       <div className="max-w-7xl mx-auto">
         {/* Header */}
-        <div className="bg-white rounded-2xl shadow-xl p-4 mb-4">
+        <div 
+          className="rounded-2xl shadow-xl p-4 mb-4 border"
+          style={{
+            background: colors.surface,
+            borderColor: `${colors.primary}30`,
+            backdropFilter: 'blur(20px)'
+          }}
+        >
           <div className="flex justify-between items-center">
             <div>
-              <h1 className="text-3xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-red-600 to-blue-600">
+              <h1 
+                className="text-3xl font-orbitron font-black"
+                style={{
+                  background: `linear-gradient(135deg, ${colors.primary}, ${colors.secondary})`,
+                  WebkitBackgroundClip: 'text',
+                  WebkitTextFillColor: 'transparent'
+                }}
+              >
                 🃏 UNO
               </h1>
-              <p className="text-sm text-gray-600">Room: {roomCode}</p>
+              <p className="text-sm font-poppins" style={{ color: colors.textSecondary }}>
+                Room: {roomCode}
+              </p>
             </div>
             <button
               onClick={onLeaveRoom}
-              className="px-4 py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg transition-colors"
+              className="px-4 py-2 rounded-lg font-raleway font-semibold transition-colors border"
+              style={{
+                background: 'rgba(239, 68, 68, 0.1)',
+                borderColor: 'rgba(239, 68, 68, 0.5)',
+                color: '#ef4444'
+              }}
             >
               Leave Game
             </button>
@@ -265,29 +308,44 @@ export default function UNOGame({ roomCode, username, players, initialGameState,
         </div>
 
         {/* Players Info */}
-        <div className="bg-white rounded-2xl shadow-xl p-4 mb-4">
-          <h2 className="text-lg font-bold mb-3">Players</h2>
+        <div 
+          className="rounded-2xl shadow-xl p-4 mb-4 border"
+          style={{
+            background: colors.surface,
+            borderColor: `${colors.primary}30`,
+            backdropFilter: 'blur(20px)'
+          }}
+        >
+          <h2 className="text-lg font-orbitron font-bold mb-3" style={{ color: colors.text }}>
+            Players
+          </h2>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
             {gameState.players?.map((player, index) => (
               <div
                 key={player.name}
-                className={`p-3 rounded-lg ${
-                  index === gameState.currentPlayerIndex
-                    ? 'bg-green-100 border-2 border-green-500'
-                    : 'bg-gray-100'
-                }`}
+                className="p-3 rounded-lg border-2"
+                style={{
+                  background: index === gameState.currentPlayerIndex
+                    ? `${colors.primary}20`
+                    : 'rgba(0, 0, 0, 0.3)',
+                  borderColor: index === gameState.currentPlayerIndex
+                    ? colors.primary
+                    : `${colors.primary}30`
+                }}
               >
                 <div className="flex items-center justify-between">
-                  <span className="font-semibold">
+                  <span className="font-raleway font-semibold" style={{ color: colors.text }}>
                     {player.name}
                     {player.name === username && ' (You)'}
                   </span>
-                  <span className="text-2xl font-bold text-red-500">
+                  <span className="text-2xl font-bold" style={{ color: colors.primary }}>
                     {player.name === username ? myHand.length : (player.hand?.length || 0)}
                   </span>
                 </div>
                 {index === gameState.currentPlayerIndex && (
-                  <p className="text-xs text-green-600 mt-1">🎯 Current Turn</p>
+                  <p className="text-xs font-poppins mt-1" style={{ color: colors.primary }}>
+                    🎯 Current Turn
+                  </p>
                 )}
               </div>
             ))}
@@ -295,34 +353,52 @@ export default function UNOGame({ roomCode, username, players, initialGameState,
         </div>
 
         {/* Game Board */}
-        <div className="bg-white rounded-2xl shadow-xl p-8 mb-4">
+        <div 
+          className="rounded-2xl shadow-xl p-8 mb-4 border"
+          style={{
+            background: colors.surface,
+            borderColor: `${colors.primary}30`,
+            backdropFilter: 'blur(20px)'
+          }}
+        >
           <div className="flex items-center justify-center gap-8">
             {/* Draw Pile */}
             <div className="text-center">
               <button
                 onClick={handleDrawCard}
                 disabled={!isMyTurn}
-                className={`w-32 h-48 rounded-2xl border-4 border-dashed flex items-center justify-center text-6xl transition-transform ${
-                  isMyTurn
-                    ? 'border-gray-400 hover:scale-105 cursor-pointer bg-gray-200'
-                    : 'border-gray-300 cursor-not-allowed bg-gray-100'
-                }`}
+                className="w-32 h-48 rounded-2xl border-4 border-dashed flex items-center justify-center text-6xl transition-transform hover:scale-105"
+                style={{
+                  borderColor: isMyTurn ? `${colors.primary}60` : `${colors.primary}30`,
+                  background: isMyTurn ? 'rgba(0, 0, 0, 0.3)' : 'rgba(0, 0, 0, 0.2)',
+                  cursor: isMyTurn ? 'pointer' : 'not-allowed'
+                }}
               >
                 🎴
               </button>
-              <p className="mt-2 text-sm font-semibold">Draw Pile</p>
-              <p className="text-xs text-gray-600">{gameState.deck?.length || 0} cards</p>
+              <p className="mt-2 text-sm font-raleway font-semibold" style={{ color: colors.text }}>
+                Draw Pile
+              </p>
+              <p className="text-xs font-poppins" style={{ color: colors.textSecondary }}>
+                {gameState.deck?.length || 0} cards
+              </p>
             </div>
 
             {/* Current Card */}
             <div className="text-center">
               <div
-                className={`w-32 h-48 rounded-2xl ${getCardColor(topCard)} border-4 border-white shadow-2xl flex items-center justify-center text-6xl font-bold text-white`}
+                className="w-32 h-48 rounded-2xl border-4 shadow-2xl flex items-center justify-center text-6xl font-bold text-white"
+                style={{
+                  background: getCardColor(topCard),
+                  borderColor: 'rgba(255, 255, 255, 0.3)'
+                }}
               >
                 {getCardDisplay(topCard)}
               </div>
-              <p className="mt-2 text-sm font-semibold">Current Card</p>
-              <p className="text-xs text-gray-600 capitalize">
+              <p className="mt-2 text-sm font-raleway font-semibold" style={{ color: colors.text }}>
+                Current Card
+              </p>
+              <p className="text-xs font-poppins capitalize" style={{ color: colors.textSecondary }}>
                 Color: {gameState.currentColor}
               </p>
             </div>
@@ -330,23 +406,43 @@ export default function UNOGame({ roomCode, username, players, initialGameState,
 
           {/* Turn Indicator */}
           <div className="mt-6 text-center">
-            <p className={`text-xl font-bold ${isMyTurn ? 'text-green-600 animate-pulse' : 'text-gray-600'}`}>
+            <p 
+              className="text-xl font-orbitron font-bold"
+              style={{ 
+                color: isMyTurn ? colors.primary : colors.textSecondary,
+                animation: isMyTurn ? 'pulse 2s infinite' : 'none'
+              }}
+            >
               {isMyTurn ? "🎯 It's your turn!" : `⏳ Waiting for ${currentPlayer?.name}...`}
             </p>
           </div>
         </div>
 
         {/* Your Hand */}
-        <div className="bg-white rounded-2xl shadow-xl p-6">
-          <h2 className="text-xl font-bold mb-4">
+        <div 
+          className="rounded-2xl shadow-xl p-6 border"
+          style={{
+            background: colors.surface,
+            borderColor: `${colors.primary}30`,
+            backdropFilter: 'blur(20px)'
+          }}
+        >
+          <h2 className="text-xl font-orbitron font-bold mb-4" style={{ color: colors.text }}>
             Your Hand ({myHand.length} {myHand.length === 1 ? 'card' : 'cards'})
           </h2>
           
           {myHand.length === 0 ? (
             <div className="text-center py-12">
-              <div className="animate-spin rounded-full h-16 w-16 border-b-4 border-red-500 mx-auto mb-4"></div>
-              <p className="text-gray-600 text-lg font-semibold">Loading your cards...</p>
-              <p className="text-gray-500 text-sm mt-2">This should only take a moment</p>
+              <div 
+                className="animate-spin rounded-full h-16 w-16 border-b-4 mx-auto mb-4"
+                style={{ borderColor: colors.primary }}
+              ></div>
+              <p className="font-poppins text-lg font-semibold" style={{ color: colors.text }}>
+                Loading your cards...
+              </p>
+              <p className="font-poppins text-sm mt-2" style={{ color: colors.textSecondary }}>
+                This should only take a moment
+              </p>
             </div>
           ) : (
             <div className="flex gap-3 overflow-x-auto pb-4">
@@ -355,11 +451,26 @@ export default function UNOGame({ roomCode, username, players, initialGameState,
                   key={index}
                   onClick={() => handlePlayCard(index)}
                   disabled={!isMyTurn}
-                  className={`flex-shrink-0 w-24 h-36 rounded-xl ${getCardColor(card)} border-4 border-white shadow-lg flex items-center justify-center text-4xl font-bold text-white transition-all ${
-                    isMyTurn 
-                      ? 'hover:scale-110 cursor-pointer hover:-translate-y-2 hover:shadow-2xl' 
-                      : 'cursor-not-allowed opacity-50'
-                  }`}
+                  className="flex-shrink-0 w-24 h-36 rounded-xl border-4 shadow-lg flex items-center justify-center text-4xl font-bold text-white transition-all"
+                  style={{
+                    background: getCardColor(card),
+                    borderColor: 'rgba(255, 255, 255, 0.3)',
+                    cursor: isMyTurn ? 'pointer' : 'not-allowed',
+                    opacity: isMyTurn ? 1 : 0.5,
+                    transform: isMyTurn ? 'none' : 'scale(0.95)'
+                  }}
+                  onMouseEnter={(e) => {
+                    if (isMyTurn) {
+                      e.currentTarget.style.transform = 'scale(1.1) translateY(-8px)';
+                      e.currentTarget.style.boxShadow = `0 0 40px ${colors.glow}60`;
+                    }
+                  }}
+                  onMouseLeave={(e) => {
+                    if (isMyTurn) {
+                      e.currentTarget.style.transform = 'scale(1)';
+                      e.currentTarget.style.boxShadow = '';
+                    }
+                  }}
                   title={isMyTurn ? 'Click to play' : 'Wait for your turn'}
                 >
                   {getCardDisplay(card)}
@@ -372,14 +483,27 @@ export default function UNOGame({ roomCode, username, players, initialGameState,
         {/* Color Picker Modal */}
         {showColorPicker && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-            <div className="bg-white rounded-2xl p-8 shadow-2xl">
-              <h3 className="text-2xl font-bold mb-6 text-center">Choose a Color</h3>
+            <div 
+              className="rounded-2xl p-8 shadow-2xl border"
+              style={{
+                background: colors.surface,
+                borderColor: `${colors.primary}30`,
+                backdropFilter: 'blur(20px)'
+              }}
+            >
+              <h3 className="text-2xl font-orbitron font-bold mb-6 text-center" style={{ color: colors.text }}>
+                Choose a Color
+              </h3>
               <div className="grid grid-cols-2 gap-4">
                 {['red', 'blue', 'green', 'yellow'].map(color => (
                   <button
                     key={color}
                     onClick={() => handleColorChoice(color)}
-                    className={`w-28 h-28 rounded-xl ${getCardColor({ color })} border-4 border-white shadow-lg hover:scale-110 transition-transform flex items-center justify-center`}
+                    className="w-28 h-28 rounded-xl border-4 shadow-lg hover:scale-110 transition-transform flex items-center justify-center"
+                    style={{
+                      background: getCardColor({ color }),
+                      borderColor: 'rgba(255, 255, 255, 0.3)'
+                    }}
                   >
                     <span className="text-white text-lg capitalize font-bold">{color}</span>
                   </button>
