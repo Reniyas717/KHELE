@@ -12,7 +12,7 @@ const Landing = () => {
   const particleCanvasRef = useRef(null);
   const particlesRef = useRef([]);
 
-  // Particle class and intro logic
+  // Particle class
   class Particle {
     constructor() {
       this.pos = { x: 0, y: 0 };
@@ -249,49 +249,86 @@ const Landing = () => {
     return () => clearTimeout(timer);
   }, []);
 
-  // Define sections with PROPER STYLING
+  // PROPERLY SIZED SECTIONS
   const sections = [
     {
       leftLabel: "GAMING",
       title: (
-        <div className="flex flex-col items-center px-4">
+        <div className="flex flex-col items-center justify-center w-full h-full px-4">
+          {/* Hero Badge */}
           <div
-            className="inline-block mb-4 px-4 py-2 rounded-full font-poppins font-medium text-sm"
+            className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full mb-4 border"
             style={{
-              background: `linear-gradient(135deg, ${colors.primary}20, ${colors.secondary}20)`,
-              border: `1px solid ${colors.primary}60`,
-              color: colors.primary
+              background: `rgba(0, 0, 0, 0.6)`,
+              borderColor: colors.primary,
+              backdropFilter: 'blur(10px)'
             }}
           >
-            🎮 Next-Gen Gaming Platform
+            <span className="text-sm">⚡</span>
+            <span className="font-poppins text-[10px] font-bold tracking-wider" style={{ color: colors.primary }}>
+              NEXT-GEN PLATFORM
+            </span>
           </div>
+
+          {/* Main Title */}
           <h1
-            className="font-orbitron text-6xl md:text-8xl font-black mb-4"
+            className="font-orbitron text-5xl md:text-6xl font-black mb-3 text-center leading-none"
             style={{
-              background: `linear-gradient(45deg, ${colors.primary}, ${colors.secondary}, ${colors.accent})`,
+              background: `linear-gradient(135deg, ${colors.primary}, ${colors.secondary})`,
               WebkitBackgroundClip: 'text',
               WebkitTextFillColor: 'transparent',
-              textShadow: `0 0 60px ${colors.glow}40`
+              textShadow: `0 0 80px ${colors.glow}80`
             }}
           >
             KHELE
           </h1>
-          <p className="font-poppins text-2xl md:text-3xl mb-3 font-light" style={{ color: colors.text }}>
+
+          {/* Subtitle */}
+          <p 
+            className="font-poppins text-base md:text-lg mb-6 font-light text-center"
+            style={{ color: colors.text }}
+          >
             Where Champions Are Born
           </p>
-          <p className="font-raleway text-base md:text-lg max-w-xl mx-auto mb-6 opacity-80" style={{ color: colors.textSecondary }}>
-            Experience the future of online gaming with stunning visuals
-          </p>
+
+          {/* Quick Stats */}
+          <div className="flex gap-4 mb-6">
+            {[
+              { icon: '⚡', label: 'Lightning Fast' },
+              { icon: '🌍', label: 'Global Play' },
+              { icon: '🏆', label: 'Real Rewards' }
+            ].map((item, i) => (
+              <div
+                key={i}
+                className="flex flex-col items-center gap-1.5 px-3 py-2 rounded-lg border"
+                style={{
+                  background: 'rgba(0, 0, 0, 0.5)',
+                  borderColor: `${colors.primary}40`,
+                  backdropFilter: 'blur(10px)'
+                }}
+              >
+                <span className="text-xl">{item.icon}</span>
+                <span className="font-raleway text-[10px] font-semibold" style={{ color: colors.primary }}>
+                  {item.label}
+                </span>
+              </div>
+            ))}
+          </div>
+
+          {/* CTA Button */}
           <button
             onClick={() => navigate('/login')}
-            className="font-raleway font-bold px-8 py-4 rounded-xl hover:scale-105 transition-all text-lg"
+            className="group relative font-raleway font-bold px-8 py-2.5 rounded-lg text-sm overflow-hidden transition-all hover:scale-105"
             style={{
               background: `linear-gradient(135deg, ${colors.primary}, ${colors.secondary})`,
-              color: theme === 'dark' ? '#000' : '#fff',
-              boxShadow: `0 0 30px ${colors.glow}60`
+              color: '#000',
+              boxShadow: `0 0 40px ${colors.glow}60`
             }}
           >
-            Start Playing
+            <span className="relative z-10 flex items-center gap-2">
+              Start Playing
+              <span className="group-hover:translate-x-1 transition-transform">→</span>
+            </span>
           </button>
         </div>
       ),
@@ -301,23 +338,79 @@ const Landing = () => {
     {
       leftLabel: "CLASSIC",
       title: (
-        <div className="flex flex-col items-center px-4">
-          <div className="text-7xl mb-6">🎴</div>
-          <h2 className="font-orbitron text-5xl md:text-6xl font-bold mb-4" style={{ color: colors.text }}>
-            UNO
-          </h2>
-          <p className="font-poppins text-lg md:text-xl mb-6 max-w-lg text-center" style={{ color: colors.textSecondary }}>
-            Classic card game with stunning animations
-          </p>
-          <button
-            onClick={() => navigate('/login')}
-            className="font-raleway font-bold px-6 py-3 rounded-xl hover:scale-110 transition-all"
+        <div className="flex flex-col items-center justify-center w-full h-full px-4">
+          {/* Game Icon */}
+          <div
+            className="text-5xl mb-4 p-4 rounded-2xl border"
             style={{
-              background: `linear-gradient(135deg, ${colors.primary}, ${colors.secondary})`,
-              color: theme === 'dark' ? '#000' : '#fff'
+              background: 'rgba(0, 0, 0, 0.6)',
+              borderColor: `${colors.primary}40`,
+              backdropFilter: 'blur(10px)',
+              boxShadow: `0 0 40px ${colors.glow}40`
             }}
           >
-            Play UNO
+            🎴
+          </div>
+
+          {/* Badge */}
+          <div
+            className="inline-block px-3 py-0.5 rounded-full mb-3 border text-[10px] font-bold"
+            style={{
+              background: 'rgba(0, 0, 0, 0.6)',
+              borderColor: colors.primary,
+              color: colors.primary
+            }}
+          >
+            MOST POPULAR
+          </div>
+
+          {/* Title */}
+          <h2 
+            className="font-orbitron text-4xl md:text-5xl font-black mb-3 text-center"
+            style={{ color: colors.text }}
+          >
+            UNO REVOLUTION
+          </h2>
+
+          <p className="font-poppins text-sm mb-6 text-center max-w-xl" style={{ color: colors.textSecondary }}>
+            Timeless card game reimagined with stunning 3D animations
+          </p>
+
+          {/* Feature Grid */}
+          <div className="grid grid-cols-2 gap-3 mb-6 max-w-lg">
+            {[
+              { icon: '👥', text: 'Up to 8 Players' },
+              { icon: '⚡', text: 'Power Cards' },
+              { icon: '🎨', text: 'Custom Decks' },
+              { icon: '🏆', text: 'Tournaments' }
+            ].map((feat, i) => (
+              <div
+                key={i}
+                className="flex items-center gap-2 px-3 py-2 rounded-lg border"
+                style={{
+                  background: 'rgba(0, 0, 0, 0.5)',
+                  borderColor: `${colors.primary}30`,
+                  backdropFilter: 'blur(10px)'
+                }}
+              >
+                <span className="text-xl">{feat.icon}</span>
+                <span className="font-raleway text-xs font-semibold" style={{ color: colors.text }}>
+                  {feat.text}
+                </span>
+              </div>
+            ))}
+          </div>
+
+          <button
+            onClick={() => navigate('/login')}
+            className="font-raleway font-bold px-8 py-2.5 rounded-lg text-sm hover:scale-105 transition-all"
+            style={{
+              background: `linear-gradient(135deg, ${colors.primary}, ${colors.secondary})`,
+              color: '#000',
+              boxShadow: `0 0 40px ${colors.glow}60`
+            }}
+          >
+            Play UNO Now
           </button>
         </div>
       ),
@@ -327,20 +420,79 @@ const Landing = () => {
     {
       leftLabel: "CREATIVE",
       title: (
-        <div className="flex flex-col items-center px-4">
-          <div className="text-7xl mb-6">🎨</div>
-          <h2 className="font-orbitron text-5xl md:text-6xl font-bold mb-4" style={{ color: colors.text }}>
-            Scribble
+        <div className="flex flex-col items-center justify-center w-full h-full px-4">
+          {/* Game Icon */}
+          <div
+            className="text-5xl mb-4 p-4 rounded-2xl border"
+            style={{
+              background: 'rgba(0, 0, 0, 0.6)',
+              borderColor: `${colors.secondary}40`,
+              backdropFilter: 'blur(10px)',
+              boxShadow: `0 0 40px ${colors.secondary}40`
+            }}
+          >
+            🎨
+          </div>
+
+          <div
+            className="inline-block px-3 py-0.5 rounded-full mb-3 border text-[10px] font-bold"
+            style={{
+              background: 'rgba(0, 0, 0, 0.6)',
+              borderColor: colors.secondary,
+              color: colors.secondary
+            }}
+          >
+            CREATIVITY UNLEASHED
+          </div>
+
+          <h2 
+            className="font-orbitron text-4xl md:text-5xl font-black mb-3 text-center"
+            style={{
+              background: `linear-gradient(135deg, ${colors.secondary}, ${colors.accent})`,
+              WebkitBackgroundClip: 'text',
+              WebkitTextFillColor: 'transparent'
+            }}
+          >
+            SCRIBBLE PRO
           </h2>
-          <p className="font-poppins text-lg md:text-xl mb-6 max-w-lg text-center" style={{ color: colors.textSecondary }}>
-            Draw, guess, and have fun with friends
+
+          <p className="font-poppins text-sm mb-6 text-center max-w-xl" style={{ color: colors.textSecondary }}>
+            Draw, guess, compete with AI-powered features
           </p>
+
+          <div className="grid grid-cols-3 gap-2 mb-6 max-w-2xl">
+            {[
+              { icon: '🎨', text: 'HD Canvas' },
+              { icon: '🤖', text: 'AI Hints' },
+              { icon: '🎭', text: 'Custom Words' },
+              { icon: '⏱️', text: 'Speed Mode' },
+              { icon: '🎪', text: 'Private Rooms' },
+              { icon: '🏅', text: 'Achievements' }
+            ].map((feat, i) => (
+              <div
+                key={i}
+                className="flex flex-col items-center gap-1.5 px-2 py-2 rounded-lg border"
+                style={{
+                  background: 'rgba(0, 0, 0, 0.5)',
+                  borderColor: `${colors.secondary}30`,
+                  backdropFilter: 'blur(10px)'
+                }}
+              >
+                <span className="text-2xl">{feat.icon}</span>
+                <span className="font-raleway text-[10px] font-semibold text-center" style={{ color: colors.text }}>
+                  {feat.text}
+                </span>
+              </div>
+            ))}
+          </div>
+
           <button
             onClick={() => navigate('/login')}
-            className="font-raleway font-bold px-6 py-3 rounded-xl hover:scale-110 transition-all"
+            className="font-raleway font-bold px-8 py-2.5 rounded-lg text-sm hover:scale-105 transition-all"
             style={{
-              background: `linear-gradient(135deg, ${colors.primary}, ${colors.secondary})`,
-              color: theme === 'dark' ? '#000' : '#fff'
+              background: `linear-gradient(135deg, ${colors.secondary}, ${colors.accent})`,
+              color: '#000',
+              boxShadow: `0 0 40px ${colors.secondary}60`
             }}
           >
             Start Drawing
@@ -353,34 +505,45 @@ const Landing = () => {
     {
       leftLabel: "FEATURES",
       title: (
-        <div className="flex flex-col items-center max-w-5xl px-4">
-          <h2 className="font-orbitron text-4xl md:text-5xl font-bold mb-10" style={{ color: colors.text }}>
-            Why Choose KHELE?
+        <div className="flex flex-col items-center justify-center w-full h-full px-4">
+          <h2 
+            className="font-orbitron text-3xl md:text-4xl font-black mb-6 text-center"
+            style={{ color: colors.text }}
+          >
+            REVOLUTIONARY FEATURES
           </h2>
-          <div className="grid md:grid-cols-3 gap-6 w-full">
+
+          <div className="grid md:grid-cols-3 gap-4 max-w-4xl">
             {[
-              { icon: '⚡', title: 'Lightning Fast', description: 'Zero lag gameplay' },
-              { icon: '🔒', title: 'Secure & Safe', description: 'Enterprise security' },
-              { icon: '🌍', title: 'Global Community', description: 'Play worldwide' },
-              { icon: '🎯', title: 'Fair Play', description: 'Anti-cheat systems' },
-              { icon: '🏆', title: 'Leaderboards', description: 'Compete globally' },
-              { icon: '💬', title: 'Live Chat', description: 'Real-time talk' }
-            ].map((feature, i) => (
+              { icon: '⚡', title: 'Quantum Speed', stat: '<10ms' },
+              { icon: '🔒', title: 'Military Security', stat: '256-bit' },
+              { icon: '🌍', title: 'Global Network', stat: '180+' },
+              { icon: '🎯', title: 'Anti-Cheat AI', stat: '99.9%' },
+              { icon: '🏆', title: 'Real Rewards', stat: '$1M+' },
+              { icon: '💬', title: 'Voice & Video', stat: 'HD' }
+            ].map((feat, i) => (
               <div
                 key={i}
-                className="p-5 rounded-2xl backdrop-blur-xl hover:scale-105 transition-all"
+                className="flex flex-col items-center gap-2 px-4 py-4 rounded-xl border hover:scale-105 transition-all"
                 style={{
-                  background: `${colors.surface}60`,
-                  border: `1px solid ${colors.primary}30`
+                  background: 'rgba(0, 0, 0, 0.6)',
+                  borderColor: `${colors.primary}40`,
+                  backdropFilter: 'blur(10px)'
                 }}
               >
-                <div className="text-4xl mb-3">{feature.icon}</div>
-                <h3 className="font-orbitron text-lg font-bold mb-2" style={{ color: colors.primary }}>
-                  {feature.title}
+                <span className="text-3xl">{feat.icon}</span>
+                <div
+                  className="px-2 py-0.5 rounded-full text-[10px] font-bold"
+                  style={{
+                    background: colors.primary,
+                    color: '#000'
+                  }}
+                >
+                  {feat.stat}
+                </div>
+                <h3 className="font-orbitron text-sm font-bold text-center" style={{ color: colors.primary }}>
+                  {feat.title}
                 </h3>
-                <p className="font-raleway text-sm" style={{ color: colors.textSecondary }}>
-                  {feature.description}
-                </p>
               </div>
             ))}
           </div>
@@ -392,34 +555,60 @@ const Landing = () => {
     {
       leftLabel: "COMMUNITY",
       title: (
-        <div className="flex flex-col items-center px-4">
-          <h2 className="font-orbitron text-4xl md:text-5xl font-bold mb-10" style={{ color: colors.text }}>
-            Join Our Community
+        <div className="flex flex-col items-center justify-center w-full h-full px-4">
+          <h2 
+            className="font-orbitron text-4xl md:text-5xl font-black mb-6 text-center"
+            style={{
+              background: `linear-gradient(135deg, ${colors.primary}, ${colors.secondary})`,
+              WebkitBackgroundClip: 'text',
+              WebkitTextFillColor: 'transparent'
+            }}
+          >
+            JOIN THE REVOLUTION
           </h2>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-3xl">
+
+          <div className="grid grid-cols-3 gap-4 mb-6 max-w-3xl">
             {[
-              { value: '10K+', label: 'Active Players', icon: '👥' },
-              { value: '50K+', label: 'Games Played', icon: '🎮' },
-              { value: '4.9★', label: 'User Rating', icon: '⭐' }
+              { icon: '👥', value: '50K+', label: 'Active Players', live: true },
+              { icon: '🎮', value: '2.4M+', label: 'Games Today' },
+              { icon: '⭐', value: '4.9/5', label: 'User Rating' }
             ].map((stat, i) => (
               <div
                 key={i}
-                className="p-6 rounded-2xl backdrop-blur-xl hover:scale-110 transition-all"
+                className="relative flex flex-col items-center gap-1.5 px-4 py-4 rounded-xl border"
                 style={{
-                  background: `${colors.surface}60`,
-                  border: `2px solid ${colors.primary}40`
+                  background: 'rgba(0, 0, 0, 0.6)',
+                  borderColor: `${colors.primary}40`,
+                  backdropFilter: 'blur(10px)'
                 }}
               >
-                <div className="text-5xl mb-3">{stat.icon}</div>
-                <div className="font-orbitron text-4xl font-bold mb-2" style={{ color: colors.primary }}>
+                {stat.live && (
+                  <div className="absolute top-2 right-2 flex items-center gap-1">
+                    <div className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
+                  </div>
+                )}
+                <span className="text-3xl">{stat.icon}</span>
+                <div className="font-orbitron text-2xl font-black" style={{ color: colors.primary }}>
                   {stat.value}
                 </div>
-                <div className="font-raleway text-base" style={{ color: colors.textSecondary }}>
+                <div className="font-poppins text-xs" style={{ color: colors.textSecondary }}>
                   {stat.label}
                 </div>
               </div>
             ))}
           </div>
+
+          <button
+            onClick={() => navigate('/login')}
+            className="font-raleway font-bold px-10 py-3 rounded-lg text-sm hover:scale-105 transition-all"
+            style={{
+              background: `linear-gradient(135deg, ${colors.primary}, ${colors.secondary})`,
+              color: '#000',
+              boxShadow: `0 0 50px ${colors.glow}70`
+            }}
+          >
+            Join Community
+          </button>
         </div>
       ),
       rightLabel: "TOGETHER",
@@ -428,36 +617,82 @@ const Landing = () => {
     {
       leftLabel: "READY",
       title: (
-        <div className="flex flex-col items-center px-4">
-          <h2 className="font-orbitron text-5xl md:text-6xl font-bold mb-6" style={{ color: colors.text }}>
-            Ready to Play?
-          </h2>
-          <p className="font-poppins text-2xl mb-10 max-w-xl text-center" style={{ color: colors.textSecondary }}>
-            Join thousands of players worldwide
-          </p>
-          <button
-            onClick={() => navigate('/login')}
-            className="font-raleway font-bold px-12 py-5 rounded-2xl text-xl hover:scale-110 transition-all"
+        <div className="flex flex-col items-center justify-center w-full h-full px-4">
+          <div className="text-5xl mb-6">🚀</div>
+          
+          <h2 
+            className="font-orbitron text-4xl md:text-5xl font-black mb-4 text-center leading-tight"
             style={{
-              background: `linear-gradient(135deg, ${colors.primary}, ${colors.secondary})`,
-              color: theme === 'dark' ? '#000' : '#fff',
-              boxShadow: `0 0 50px ${colors.glow}80`
+              background: `linear-gradient(135deg, ${colors.primary}, ${colors.secondary}, ${colors.accent})`,
+              WebkitBackgroundClip: 'text',
+              WebkitTextFillColor: 'transparent'
             }}
           >
-            Start Your Journey
-          </button>
-          
-          <div className="mt-16 flex gap-6 flex-wrap justify-center">
-            {['Twitter', 'Discord', 'Instagram', 'YouTube'].map((social) => (
-              <a
-                key={social}
-                href="#"
-                className="font-poppins text-base hover:scale-110 transition-transform"
-                style={{ color: colors.textSecondary }}
+            YOUR JOURNEY
+            <br />
+            STARTS NOW
+          </h2>
+
+          <p className="font-poppins text-base mb-6 text-center max-w-xl" style={{ color: colors.textSecondary }}>
+            Join thousands experiencing next-gen gaming
+          </p>
+
+          <div className="grid grid-cols-3 gap-4 mb-6 max-w-3xl">
+            {[
+              { num: '01', icon: '📝', text: 'Sign Up Free' },
+              { num: '02', icon: '🎮', text: 'Choose Game' },
+              { num: '03', icon: '🏆', text: 'Start Winning' }
+            ].map((step, i) => (
+              <div
+                key={i}
+                className="relative flex flex-col items-center gap-2 px-4 py-4 rounded-xl border"
+                style={{
+                  background: 'rgba(0, 0, 0, 0.6)',
+                  borderColor: `${colors.primary}40`,
+                  backdropFilter: 'blur(10px)'
+                }}
               >
-                {social}
-              </a>
+                <div
+                  className="absolute -top-3 -left-3 w-8 h-8 rounded-lg flex items-center justify-center font-orbitron text-xs font-black"
+                  style={{
+                    background: colors.primary,
+                    color: '#000'
+                  }}
+                >
+                  {step.num}
+                </div>
+                <span className="text-3xl mt-1">{step.icon}</span>
+                <span className="font-raleway text-xs font-semibold text-center" style={{ color: colors.text }}>
+                  {step.text}
+                </span>
+              </div>
             ))}
+          </div>
+
+          <div className="flex gap-3">
+            <button
+              onClick={() => navigate('/login')}
+              className="font-raleway font-black px-10 py-3 rounded-lg text-base hover:scale-105 transition-all"
+              style={{
+                background: `linear-gradient(135deg, ${colors.primary}, ${colors.secondary})`,
+                color: '#000',
+                boxShadow: `0 0 60px ${colors.glow}80`
+              }}
+            >
+              START PLAYING FREE
+            </button>
+
+            <button
+              className="font-raleway font-bold px-6 py-3 rounded-lg text-sm border hover:scale-105 transition-all"
+              style={{
+                background: 'rgba(0, 0, 0, 0.6)',
+                borderColor: colors.primary,
+                color: colors.primary,
+                backdropFilter: 'blur(10px)'
+              }}
+            >
+              Watch Demo
+            </button>
           </div>
         </div>
       ),
@@ -467,28 +702,43 @@ const Landing = () => {
 
   const header = (
     <div 
-      className="w-full px-6 py-4 backdrop-blur-md flex items-center justify-between" 
-      style={{ background: `${colors.surface}30` }}
+      className="w-full px-4 py-3 flex items-center justify-between border-b"
+      style={{ 
+        background: 'rgba(0, 0, 0, 0.6)',
+        borderColor: `${colors.primary}30`,
+        backdropFilter: 'blur(20px)'
+      }}
     >
-      <h2 className="font-orbitron text-2xl font-bold" style={{ color: colors.primary }}>
+      <h2 
+        className="font-orbitron text-xl font-black"
+        style={{ 
+          background: `linear-gradient(135deg, ${colors.primary}, ${colors.secondary})`,
+          WebkitBackgroundClip: 'text',
+          WebkitTextFillColor: 'transparent'
+        }}
+      >
         KHELE
       </h2>
       
-      <div className="flex items-center gap-4">
+      <div className="flex items-center gap-3">
         <button
           onClick={toggleTheme}
-          className="p-2 rounded-lg hover:scale-110 transition-all text-xl"
-          style={{ backgroundColor: colors.surface }}
+          className="p-1.5 rounded-lg text-lg hover:scale-110 transition-all border"
+          style={{
+            background: 'rgba(0, 0, 0, 0.5)',
+            borderColor: `${colors.primary}30`,
+            backdropFilter: 'blur(10px)'
+          }}
         >
           {theme === 'dark' ? '🌞' : '🌙'}
         </button>
         
         <button
           onClick={() => navigate('/login')}
-          className="font-raleway font-semibold px-5 py-2 rounded-lg hover:scale-105 transition-all text-sm"
+          className="font-raleway font-bold px-5 py-1.5 rounded-lg text-sm hover:scale-105 transition-all"
           style={{
             background: `linear-gradient(135deg, ${colors.primary}, ${colors.secondary})`,
-            color: theme === 'dark' ? '#000' : '#fff'
+            color: '#000'
           }}
         >
           Login
@@ -498,9 +748,16 @@ const Landing = () => {
   );
 
   const footer = (
-    <div className="text-center py-3 backdrop-blur-md" style={{ background: `${colors.surface}30` }}>
-      <p className="font-raleway text-xs" style={{ color: colors.textSecondary }}>
-        © 2025 KHELE. All rights reserved.
+    <div 
+      className="text-center py-3 border-t"
+      style={{ 
+        background: 'rgba(0, 0, 0, 0.6)',
+        borderColor: `${colors.primary}30`,
+        backdropFilter: 'blur(20px)'
+      }}
+    >
+      <p className="font-raleway text-[10px]" style={{ color: colors.textSecondary }}>
+        © 2025 KHELE. All rights reserved. Made with 💚 for gamers worldwide.
       </p>
     </div>
   );
@@ -514,39 +771,90 @@ const Landing = () => {
   }
 
   return (
-    <div className="relative w-full h-screen overflow-hidden" style={{ backgroundColor: colors.background }}>
-      {/* GridScan Background */}
-      <div className="fixed inset-0 z-0">
+    <div className="relative w-full h-screen overflow-hidden" style={{ backgroundColor: '#000' }}>
+      {/* GridScan Background - ENHANCED */}
+      <div className="fixed inset-0 z-0 pointer-events-none">
         <GridScan
-          sensitivity={0.55}
-          lineThickness={1.5}
+          sensitivity={0.7}
+          lineThickness={2}
           linesColor={colors.primary}
-          gridScale={0.12}
+          gridScale={0.15}
           scanColor={colors.secondary}
-          scanOpacity={0.6}
+          scanOpacity={0.9}
           enablePost={true}
-          bloomIntensity={0.8}
-          chromaticAberration={0.003}
-          noiseIntensity={0.015}
-          scanGlow={0.8}
-          scanSoftness={2.5}
-          scanDuration={3.0}
-          scanDelay={2.0}
+          bloomIntensity={1.5}
+          bloomThreshold={0.2}
+          bloomSmoothing={0.9}
+          chromaticAberration={0.008}
+          noiseIntensity={0.025}
+          scanGlow={1.5}
+          scanSoftness={3.5}
+          scanPhaseTaper={0.2}
+          scanDuration={2.5}
+          scanDelay={1.5}
           lineStyle="solid"
+          lineJitter={0.2}
+          scanDirection="pingpong"
           className="w-full h-full"
+          style={{ opacity: 1 }}
         />
       </div>
 
-      {/* Content Layer */}
-      <div className="relative z-10">
+      {/* Content Layer - PERFECTLY BLENDED */}
+      <div className="relative z-10 pointer-events-auto">
         <FullScreenScrollFX
           sections={sections}
           header={header}
           footer={footer}
           showProgress
-          durations={{ change: 0.7, snap: 800 }}
+          durations={{ change: 0.8, snap: 900 }}
+          colors={{
+            text: colors.text,
+            overlay: 'transparent',
+            pageBg: 'transparent',
+            stageBg: 'transparent',
+          }}
         />
       </div>
+
+      <style>{`
+        @keyframes pulse {
+          0%, 100% { opacity: 1; }
+          50% { opacity: 0.85; }
+        }
+
+        /* Perfect Grid Blending */
+        .fx-fixed {
+          background: transparent !important;
+        }
+
+        .fx-grid {
+          background: transparent !important;
+        }
+
+        .fx-bgs {
+          display: none !important;
+        }
+
+        /* Enhanced Text Shadows for Grid */
+        .font-orbitron,
+        .font-poppins,
+        .font-raleway {
+          text-shadow: 0 2px 20px rgba(0,0,0,0.9), 0 0 60px rgba(0,0,0,0.8);
+        }
+
+        /* Smooth Backdrop Filters */
+        [style*="backdrop-filter"] {
+          -webkit-backdrop-filter: blur(20px);
+          backdrop-filter: blur(20px);
+        }
+
+        /* Grid-Matched Borders */
+        [style*="border"] {
+          border-style: solid;
+          border-width: 1px;
+        }
+      `}</style>
     </div>
   );
 };
