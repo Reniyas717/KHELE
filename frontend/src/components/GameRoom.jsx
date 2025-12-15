@@ -12,207 +12,129 @@ export default function GameRoom({ roomCode, username, initialRoomData, preSelec
   const [initialGameState, setInitialGameState] = useState(null);
   const { connect, disconnect, sendMessage, on, isConnected } = useWebSocket();
   const hasJoined = useRef(false);
-  const cleanupDone = useRef(false);
+  const isLeavingIntentionally = useRef(false);
   const listenersSetup = useRef(false);
 
-  // Setup WebSocket listeners once
-  useEffect(() => {
-    if (listenersSetup.current) {
-      console.log('⚠️ Listeners already setup');
-      return;
-    }
-    listenersSetup.current = true;
+  console.log('🎮 GameRoom render:', { 
+    username, 
+    roomCode, 
+    playerCount: room?.players?.length,
+    isConnected,
+    hasJoined: hasJoined.current 
+  });
 
-    console.log(`\n🔧 Setting up GameRoom listeners`);
-    console.log(`👤 User: ${username}`);
-    console.log(`🏠 Room: ${roomCode}\n`);
-    
+  // Connect WebSocket when component mounts
+  useEffect(() => {
+    console.log('🎮 GameRoom mounted, connecting WebSocket...');
     connect();
 
-    const unsubscribePlayerJoined = on('PLAYER_JOINED', (payload) => {
-      console.log('👥 PLAYER_JOINED event:', payload.username);
-      console.log('📋 New player list:', payload.players.map(p => p.username));
-      
-      setRoom(prevRoom => {
-        const newRoom = {
-          ...prevRoom,
-          players: payload.players
-        };
-        console.log('✅ Room updated with new players');
-        return newRoom;
-      });
-    });
-
-    const unsubscribePlayerLeft = on('PLAYER_LEFT', (payload) => {
-      console.log('👋 PLAYER_LEFT event:', payload);
-      
-      setRoom(prevRoom => {
-        if (!prevRoom) return prevRoom;
-        
-        return {
-          ...prevRoom,
-          players: payload.players || prevRoom.players.filter(p => p.username !== payload.username),
-          host: payload.host || prevRoom.host
-        };
-      });
-    });
-
-    const unsubscribeGameStarted = on('GAME_STARTED', (payload) => {
-      console.log('\n🎮 GAME_STARTED event received!');
-      console.log('📦 Game type:', payload.gameType);
-      console.log('📦 Has game state:', !!payload.gameState);
-      
-      if (payload.gameState) {
-        setCurrentGame(payload.gameType);
-        setInitialGameState(payload.gameState);
-        setGameStarted(true);
-        console.log('✅ Game initialized successfully\n');
-      } else {
-        console.error('❌ No game state in payload\n');
-      }
-    });
-
-    const unsubscribeJoinedRoom = on('JOINED_ROOM', (payload) => {
-      console.log('✅ JOINED_ROOM confirmation received');
-      console.log('📋 Room players:', payload.room.players.map(p => p.username));
-      setRoom(payload.room);
-    });
-
-    const unsubscribeRoomUpdate = on('ROOM_UPDATE', (payload) => {
-      console.log('🔄 ROOM_UPDATE event');
-      console.log('📋 Updated players:', payload.room.players.map(p => p.username));
-      setRoom(payload.room);
-    });
-
     return () => {
-      console.log('🧹 Cleaning up GameRoom');
-      if (hasJoined.current && !cleanupDone.current) {
+      console.log('🧹 GameRoom unmounting...');
+      
+      // Only send LEAVE_ROOM if user is intentionally leaving
+      if (isLeavingIntentionally.current && hasJoined.current && roomCode && username) {
+        console.log('👋 Sending LEAVE_ROOM on cleanup');
         sendMessage('LEAVE_ROOM', { roomCode, username });
-        cleanupDone.current = true;
+      } else {
+        console.log('⏭️ Skipping LEAVE_ROOM (not intentional leave)');
       }
-      unsubscribePlayerJoined();
-      unsubscribePlayerLeft();
-      unsubscribeGameStarted();
-      unsubscribeJoinedRoom();
-      unsubscribeRoomUpdate();
-      listenersSetup.current = false;
+      
+      disconnect();
     };
   }, []);
 
-  // Join room when connected
+  // Join room via WebSocket when connected
   useEffect(() => {
-    if (isConnected && !hasJoined.current) {
-      console.log(`🚪 Joining room ${roomCode} as ${username}`);
-      sendMessage('JOIN_ROOM', { roomCode, username });
+    if (isConnected && !hasJoined.current && roomCode && username) {
+      console.log('🚪 WebSocket connected, joining room:', { roomCode, username });
       hasJoined.current = true;
-    }
-  }, [isConnected]);
-
-  // Auto-start game
-  useEffect(() => {
-    const shouldAutoStart = 
-      preSelectedGame && 
-      room?.players?.length >= 2 && 
-      !gameStarted && 
-      room?.host === username &&
-      isConnected;
-
-    if (shouldAutoStart) {
-      console.log('\n🚀 Auto-starting game...');
-      console.log('👥 Players:', room.players.map(p => p.username));
       
-      const timer = setTimeout(() => {
-        console.log('🎮 Triggering START_GAME');
-        handleStartGame();
-      }, 2000);
-      
-      return () => clearTimeout(timer);
+      sendMessage('JOIN_ROOM', { roomCode, username });
     }
-  }, [room?.players?.length, gameStarted, isConnected]);
+  }, [isConnected, roomCode, username]);
 
-  const handleStartGame = () => {
-    if (room?.players?.length < 2) {
-      alert('Need at least 2 players to start!');
-      return;
-    }
-
-    const gameType = currentGame || preSelectedGame;
-    if (!gameType) {
-      alert('Please select a game first!');
-      return;
-    }
-
-    console.log(`\n🎮 Starting game: ${gameType}`);
-    console.log(`👥 Players: ${room.players.map(p => p.username).join(', ')}\n`);
-    
-    sendMessage('START_GAME', { roomCode, gameType, username });
-  };
-
-  const handleLeaveRoom = () => {
-    console.log('👋 Leaving room');
-    if (hasJoined.current && !cleanupDone.current) {
-      sendMessage('LEAVE_ROOM', { roomCode, username });
-      hasJoined.current = false;
-      cleanupDone.current = true;
-    }
-    disconnect();
-    onLeaveRoom();
-  };
-
-  // Listen for WebSocket events
+  // Setup WebSocket listeners
   useEffect(() => {
-    if (!isConnected) {
-      console.log('⚠️ WebSocket not connected');
-      return;
-    }
+    if (!isConnected || listenersSetup.current) return;
 
-    console.log('🎮 Setting up GameRoom listeners');
+    console.log('🎧 Setting up GameRoom WebSocket listeners');
+    listenersSetup.current = true;
 
-    // Listen for player joined
+    const unsubRoomJoined = on('ROOM_JOINED', (data) => {
+      console.log('✅ ROOM_JOINED event received:', data);
+      const roomData = data.payload?.room || data.room;
+      console.log('📊 Updating room state with:', roomData);
+      setRoom(roomData);
+      setCurrentGame(roomData.gameType);
+    });
+
     const unsubPlayerJoined = on('PLAYER_JOINED', (data) => {
-      console.log('👥 PLAYER_JOINED event:', data);
-      const payload = data.payload || data;
-      
-      if (payload.room) {
-        console.log('✅ Updating room with new player data');
-        setRoom(payload.room);
-      }
+      console.log('👥 PLAYER_JOINED event received:', data);
+      const roomData = data.payload?.room || data.room;
+      console.log('📊 Updating room state with:', roomData);
+      setRoom(roomData);
     });
 
-    // Listen for room updates
-    const unsubRoomUpdate = on('ROOM_UPDATE', (data) => {
-      console.log('🔄 ROOM_UPDATE event:', data);
-      const payload = data.payload || data;
-      
-      if (payload.room) {
-        console.log('✅ Updating room data');
-        setRoom(payload.room);
-      }
+    const unsubPlayerLeft = on('PLAYER_LEFT', (data) => {
+      console.log('👋 PLAYER_LEFT event received:', data);
+      const roomData = data.payload?.room || data.room;
+      console.log('📊 Updating room state with:', roomData);
+      setRoom(roomData);
     });
 
-    // Listen for game start
     const unsubGameStarted = on('GAME_STARTED', (data) => {
-      console.log('🎮 GAME_STARTED event:', data);
+      console.log('🎮 GAME_STARTED event received:', data);
       const payload = data.payload || data;
-      
-      if (payload.room) {
-        setRoom(payload.room);
-      }
-      
       setGameStarted(true);
-      setCurrentGame(payload.gameType);
       setInitialGameState(payload.gameState);
-      
-      console.log('✅ Game started:', payload.gameType);
+      setCurrentGame(payload.gameType);
+    });
+
+    const unsubRoomClosed = on('ROOM_CLOSED', (data) => {
+      console.log('🚪 ROOM_CLOSED event received:', data);
+      alert('Room has been closed');
+      isLeavingIntentionally.current = false; // Don't send LEAVE_ROOM again
+      onLeaveRoom();
     });
 
     return () => {
       console.log('🧹 Cleaning up GameRoom listeners');
+      unsubRoomJoined?.();
       unsubPlayerJoined?.();
-      unsubRoomUpdate?.();
+      unsubPlayerLeft?.();
       unsubGameStarted?.();
+      unsubRoomClosed?.();
+      listenersSetup.current = false;
     };
-  }, [on, isConnected]);
+  }, [isConnected, on, onLeaveRoom]);
+
+  const handleStartGame = async () => {
+    try {
+      console.log('🎮 Starting game via WebSocket...');
+      
+      sendMessage('START_GAME', { 
+        roomCode, 
+        username 
+      });
+      
+      console.log('✅ START_GAME message sent');
+      
+    } catch (err) {
+      console.error('❌ Error starting game:', err);
+      alert(err.message);
+    }
+  };
+
+  const handleLeaveRoom = () => {
+    console.log('👋 User intentionally leaving room:', { roomCode, username });
+    isLeavingIntentionally.current = true;
+    
+    if (hasJoined.current) {
+      sendMessage('LEAVE_ROOM', { roomCode, username });
+    }
+    
+    onLeaveRoom();
+  };
 
   // Show game if started
   if (gameStarted && currentGame && initialGameState) {
@@ -223,7 +145,7 @@ export default function GameRoom({ roomCode, username, initialRoomData, preSelec
           username={username}
           players={room?.players || []}
           initialGameState={initialGameState}
-          onLeaveRoom={onLeaveRoom}
+          onLeaveRoom={handleLeaveRoom}
         />
       );
     } else if (currentGame === 'uno') {
@@ -233,11 +155,13 @@ export default function GameRoom({ roomCode, username, initialRoomData, preSelec
           username={username}
           players={room?.players || []}
           initialGameState={initialGameState}
-          onLeaveRoom={onLeaveRoom}
+          onLeaveRoom={handleLeaveRoom}
         />
       );
     }
   }
+
+  console.log('🎨 Rendering lobby with players:', room?.players);
 
   // Lobby view
   return (
@@ -270,9 +194,12 @@ export default function GameRoom({ roomCode, username, initialRoomData, preSelec
               <p className="font-poppins" style={{ color: colors.textSecondary }}>
                 Room Code: <span className="font-mono font-bold text-lg" style={{ color: colors.text }}>{roomCode}</span>
               </p>
+              <p className="font-poppins text-sm" style={{ color: colors.textSecondary }}>
+                Status: {isConnected ? '🟢 Connected' : '🔴 Disconnected'}
+              </p>
             </div>
             <button
-              onClick={onLeaveRoom}
+              onClick={handleLeaveRoom}
               className="px-6 py-3 rounded-lg font-raleway font-bold transition-all hover:scale-105 border"
               style={{
                 background: 'rgba(239, 68, 68, 0.1)',
