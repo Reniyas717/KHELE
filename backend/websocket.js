@@ -473,6 +473,7 @@ async function handleRequestHand(ws, payload) {
     });
     
     if (!room || !room.gameState) {
+      console.error('❌ Room or gameState not found');
       ws.send(JSON.stringify({
         type: 'ERROR',
         payload: { message: 'Game not found' }
@@ -480,17 +481,29 @@ async function handleRequestHand(ws, payload) {
       return;
     }
 
+    console.log('🔍 Game state players:', room.gameState.players?.map(p => p.name));
+    
     const player = room.gameState.players?.find(p => p.name === username);
     
-    if (!player || !player.hand) {
+    if (!player) {
+      console.error('❌ Player not found in game state:', username);
       ws.send(JSON.stringify({
         type: 'ERROR',
-        payload: { message: 'Player hand not found' }
+        payload: { message: 'Player not found in game' }
       }));
       return;
     }
 
-    console.log(`✅ Sending ${player.hand.length} cards to ${username}`);
+    if (!player.hand) {
+      console.error('❌ Player hand is null/undefined');
+      ws.send(JSON.stringify({
+        type: 'ERROR',
+        payload: { message: 'Player hand not initialized' }
+      }));
+      return;
+    }
+
+    console.log(`✅ Sending ${player.hand.length} cards to ${username}:`, player.hand.slice(0, 3), '...');
 
     ws.send(JSON.stringify({
       type: 'HAND_UPDATE',
@@ -640,7 +653,10 @@ async function handlePlayCard(ws, payload) {
   try {
     const { roomCode, username, cardIndex, chosenColor } = payload;
     const normalizedCode = roomCode.toUpperCase().trim();
-    const room = await GameRoom.findOne({ roomCode: normalizedCode, isActive: true });
+    const room = await GameRoom.findOne({ 
+      roomCode: normalizedCode,
+      isActive: true 
+    });
     
     if (!room || !room.gameState) {
       ws.send(JSON.stringify({
@@ -707,7 +723,10 @@ async function handleDrawCardAction(ws, payload) {
   try {
     const { roomCode, username } = payload;
     const normalizedCode = roomCode.toUpperCase().trim();
-    const room = await GameRoom.findOne({ roomCode: normalizedCode, isActive: true });
+    const room = await GameRoom.findOne({ 
+      roomCode: normalizedCode,
+      isActive: true 
+    });
     
     if (!room || !room.gameState) {
       ws.send(JSON.stringify({
