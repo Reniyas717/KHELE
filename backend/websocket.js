@@ -479,22 +479,11 @@ async function handlePlayCard(ws, payload) {
     }
 
     console.log('📊 Before play - Current player:', room.gameState.currentPlayer);
-    console.log('📊 Before play - Players:', room.gameState.players.map(p => ({ 
-      name: p.name, 
-      cards: p.hand.length 
-    })));
 
     const result = playCard(room.gameState, username, cardIndex, chosenColor);
     
     if (result.success) {
-      // Update the game state
       room.gameState = result.gameState;
-      
-      console.log('📊 After play - Current player:', room.gameState.currentPlayer);
-      console.log('📊 After play - Players:', room.gameState.players.map(p => ({ 
-        name: p.name, 
-        cards: p.hand.length 
-      })));
       
       // Update player hands in room.players array
       room.gameState.players.forEach((gamePlayer) => {
@@ -504,28 +493,21 @@ async function handlePlayCard(ws, payload) {
         }
       });
       
-      // Mark the document as modified to ensure save works
       room.markModified('gameState');
       room.markModified('players');
-      
-      // Save to database
       await room.save();
       
       console.log('💾 Game state saved to database');
       
-      // Verify the save worked by checking current player
-      const verifyRoom = await GameRoom.findOne({ roomCode: normalizedCode, isActive: true });
-      console.log('✅ Verified saved state - Current player:', verifyRoom.gameState.currentPlayer);
-      
-      console.log('✅ Card played successfully, broadcasting...');
-      
-      // Broadcast with full player info INCLUDING card counts
+      // Broadcast card played
       const broadcastGameState = {
         ...result.gameState,
         players: result.gameState.players.map(p => ({
           name: p.name,
           score: p.score,
           cardCount: p.hand.length,
+          finished: p.finished,
+          position: p.position,
           hand: []
         })),
         deck: []
@@ -539,14 +521,50 @@ async function handlePlayCard(ws, payload) {
         }
       });
       
-      if (result.winner) {
+      // Handle auto-draw
+      if (result.autoDrawn) {
+        setTimeout(() => {
+          broadcastToRoom(normalizedCode, {
+            type: 'AUTO_DRAWN',
+            payload: {
+              playerName: result.autoDrawn.playerName,
+              cardsDrawn: result.autoDrawn.cardsDrawn,
+              gameState: broadcastGameState
+            }
+          });
+        }, 500);
+      }
+      
+      // Handle player finished (not game over yet)
+      if (result.playerFinished && !result.gameOver) {
         broadcastToRoom(normalizedCode, {
-          type: 'GAME_OVER',
-          payload: { winner: result.winner }
+          type: 'PLAYER_FINISHED',
+          payload: {
+            playerName: result.playerFinished,
+            position: result.finishedPosition,
+            points: result.pointsEarned,
+            remainingPlayers: result.remainingPlayers
+          }
         });
-        
-        room.status = 'finished';
-        await room.save();
+      }
+      
+      // Handle game over
+      if (result.gameOver) {
+        setTimeout(() => {
+          broadcastToRoom(normalizedCode, {
+            type: 'GAME_OVER',
+            payload: {
+              rankings: result.rankings,
+              finalScores: result.rankings.map(r => ({
+                name: r.name,
+                points: r.points
+              }))
+            }
+          });
+          
+          room.status = 'finished';
+          room.save();
+        }, 1000);
       }
     } else {
       console.error('❌ Card play failed:', result.message);

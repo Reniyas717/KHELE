@@ -9,14 +9,21 @@ export default function UNOGame({ roomCode, username, players, initialGameState,
   const [selectedCard, setSelectedCard] = useState(null);
   const [showColorPicker, setShowColorPicker] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const [gameOverData, setGameOverData] = useState(null);
+  const [showGameOver, setShowGameOver] = useState(false);
   const { sendMessage, on, isConnected } = useWebSocket();
   const listenersSetup = useRef(false);
+
+  // Check if current user has finished
+  const myPlayer = gameState?.players?.find(p => p.name === username);
+  const iHaveFinished = myPlayer?.finished || false;
 
   console.log('🎮 UNOGame render:', {
     username,
     currentPlayer: gameState?.currentPlayer,
     isMyTurn: gameState?.currentPlayer === username,
     myHandSize: myHand.length,
+    iHaveFinished,
     gameStateTimestamp: Date.now()
   });
 
@@ -110,12 +117,48 @@ export default function UNOGame({ roomCode, username, players, initialGameState,
       }, 200);
     });
 
+    const unsubAutoDrawn = on('AUTO_DRAWN', (data) => {
+      console.log('🎴 AUTO_DRAWN received:', data);
+      const { playerName, cardsDrawn, gameState: newGameState } = data.payload;
+      
+      // Show notification
+      setTimeout(() => {
+        if (playerName === username) {
+          alert(`You had no stackable cards and automatically drew ${cardsDrawn} cards! 📥`);
+        } else {
+          alert(`${playerName} had no stackable cards and automatically drew ${cardsDrawn} cards! 📥`);
+        }
+      }, 300);
+      
+      // Update game state
+      setGameState(newGameState);
+      
+      // Request updated hand
+      setTimeout(() => {
+        console.log('🔄 Requesting hand update after auto-draw');
+        sendMessage('REQUEST_HAND', { roomCode, username });
+      }, 500);
+    });
+
+    const unsubPlayerFinished = on('PLAYER_FINISHED', (data) => {
+      console.log('🎯 PLAYER_FINISHED received:', data);
+      const { playerName, position, points, remainingPlayers } = data.payload;
+      
+      // Show notification
+      setTimeout(() => {
+        alert(`${playerName} finished in position #${position} and earned ${points} points! 🎉\n${remainingPlayers} players remaining.`);
+      }, 500);
+    });
+
     const unsubGameOver = on('GAME_OVER', (data) => {
       console.log('🏆 GAME_OVER received:', data);
-      const winner = data.payload?.winner || data.winner;
-      setTimeout(() => {
-        alert(`🎉 Game Over! ${winner} wins! 🎉`);
-      }, 500);
+      const payload = data.payload || data;
+      
+      setGameOverData({
+        rankings: payload.rankings || [],
+        finalScores: payload.finalScores || []
+      });
+      setShowGameOver(true);
     });
 
     const unsubError = on('ERROR', (data) => {
@@ -129,6 +172,8 @@ export default function UNOGame({ roomCode, username, players, initialGameState,
       unsubHandUpdate?.();
       unsubCardPlayed?.();
       unsubCardDrawn?.();
+      unsubAutoDrawn?.();
+      unsubPlayerFinished?.();
       unsubGameOver?.();
       unsubError?.();
       listenersSetup.current = false;
@@ -136,6 +181,11 @@ export default function UNOGame({ roomCode, username, players, initialGameState,
   }, [isConnected, on, roomCode, username, sendMessage]);
 
   const handlePlayCard = (cardIndex) => {
+    if (iHaveFinished) {
+      alert('You have already finished this game! Wait for others to complete.');
+      return;
+    }
+
     const card = myHand[cardIndex];
     
     if (!card) {
@@ -195,6 +245,11 @@ export default function UNOGame({ roomCode, username, players, initialGameState,
   };
 
   const handleDrawCard = () => {
+    if (iHaveFinished) {
+      alert('You have already finished this game! Wait for others to complete.');
+      return;
+    }
+
     // Check if it's the player's turn
     const currentPlayer = gameState?.currentPlayer;
     console.log('🎯 Checking turn for draw:', { currentPlayer, username });
@@ -213,6 +268,17 @@ export default function UNOGame({ roomCode, username, players, initialGameState,
     });
   };
 
+  const handleRestartGame = () => {
+    // Send restart request to server
+    sendMessage('START_GAME', {
+      roomCode,
+      username
+    });
+    
+    setShowGameOver(false);
+    setGameOverData(null);
+  };
+
   const canPlayCard = (card) => {
     if (!gameState?.currentCard || !gameState?.currentColor) {
       console.log('⚠️ No current card or color');
@@ -227,6 +293,17 @@ export default function UNOGame({ roomCode, username, players, initialGameState,
       currentCard: current, 
       currentColor 
     });
+    
+    // If draw count is pending, only draw cards can be played
+    if (gameState.drawCount > 0) {
+      if (current.type === 'wild_draw_four' && card.type === 'wild_draw_four') {
+        return true;
+      }
+      if (current.type === 'draw_two' && (card.type === 'wild_draw_four' || card.type === 'draw_two')) {
+        return true;
+      }
+      return false;
+    }
     
     // Wild cards can always be played
     if (card.type === 'wild' || card.type === 'wild_draw_four') {
@@ -276,7 +353,16 @@ export default function UNOGame({ roomCode, username, players, initialGameState,
     return card.value;
   };
 
-  const isMyTurn = gameState?.currentPlayer === username;
+  const getMedalEmoji = (position) => {
+    switch(position) {
+      case 1: return '🥇';
+      case 2: return '🥈';
+      case 3: return '🥉';
+      default: return '🏅';
+    }
+  };
+
+  const isMyTurn = gameState?.currentPlayer === username && !iHaveFinished;
 
   // Count cards for each player
   const getPlayerCardCount = (playerName) => {
@@ -290,7 +376,8 @@ export default function UNOGame({ roomCode, username, players, initialGameState,
   console.log('🎯 Render check:', { 
     isMyTurn, 
     currentPlayer: gameState?.currentPlayer, 
-    username 
+    username,
+    iHaveFinished
   });
 
   return (
@@ -328,7 +415,8 @@ export default function UNOGame({ roomCode, username, players, initialGameState,
         <div className="mb-4 p-3 rounded bg-gray-800 text-xs font-mono">
           <p style={{ color: colors.primary }}>
             👤 You: {username} | 🎯 Current Turn: {gameState?.currentPlayer} | 
-            ⚡ Your Turn: {isMyTurn ? 'YES' : 'NO'}
+            ⚡ Your Turn: {isMyTurn ? 'YES' : 'NO'} | 
+            {iHaveFinished && '🏁 FINISHED'}
           </p>
         </div>
 
@@ -341,19 +429,25 @@ export default function UNOGame({ roomCode, username, players, initialGameState,
             {gameState?.players?.map((player, index) => {
               const cardCount = getPlayerCardCount(player.name);
               const isCurrentPlayer = player.name === gameState.currentPlayer;
+              const hasFinished = player.finished;
               
               return (
                 <div
                   key={player.name || index}
                   className="p-4 rounded-lg border-2 transition-all"
                   style={{
-                    background: isCurrentPlayer
+                    background: hasFinished
+                      ? 'rgba(16, 185, 129, 0.1)'
+                      : isCurrentPlayer
                       ? `${colors.primary}20`
                       : 'rgba(0, 0, 0, 0.3)',
-                    borderColor: isCurrentPlayer
+                    borderColor: hasFinished
+                      ? '#10b981'
+                      : isCurrentPlayer
                       ? colors.primary
                       : `${colors.primary}30`,
-                    boxShadow: isCurrentPlayer ? `0 0 20px ${colors.primary}40` : 'none'
+                    boxShadow: isCurrentPlayer ? `0 0 20px ${colors.primary}40` : 'none',
+                    opacity: hasFinished ? 0.7 : 1
                   }}
                 >
                   <p className="font-raleway font-bold" style={{ color: colors.text }}>
@@ -362,7 +456,17 @@ export default function UNOGame({ roomCode, username, players, initialGameState,
                   <p className="text-sm" style={{ color: colors.textSecondary }}>
                     Cards: {cardCount}
                   </p>
-                  {isCurrentPlayer && (
+                  {player.score > 0 && (
+                    <p className="text-xs mt-1" style={{ color: colors.secondary }}>
+                      Score: {player.score}
+                    </p>
+                  )}
+                  {hasFinished && (
+                    <p className="text-xs mt-1 font-bold" style={{ color: '#10b981' }}>
+                      {getMedalEmoji(player.position)} Finished #{player.position}
+                    </p>
+                  )}
+                  {isCurrentPlayer && !hasFinished && (
                     <p className="text-xs mt-1 font-bold animate-pulse" style={{ color: colors.primary }}>
                       🔴 Current Turn
                     </p>
@@ -373,147 +477,184 @@ export default function UNOGame({ roomCode, username, players, initialGameState,
           </div>
         </div>
 
-        {/* Game Board */}
-        <div className="mb-8 flex justify-center items-center gap-8">
-          {/* Draw Pile */}
-          <div className="text-center">
-            <div
-              className={`w-32 h-48 rounded-lg flex items-center justify-center border-4 ${
-                isMyTurn ? 'border-dashed cursor-pointer hover:scale-105 hover:shadow-2xl' : 'border-solid cursor-not-allowed'
-              } transition-all`}
+        {/* Game Board - Show different UI for finished players */}
+        {iHaveFinished ? (
+          // Finished Player View
+          <div className="mb-8 text-center">
+            <div 
+              className="p-8 rounded-2xl border-2 inline-block"
               style={{
-                borderColor: isMyTurn ? `${colors.primary}` : `${colors.primary}40`,
-                background: isMyTurn ? `${colors.primary}20` : `${colors.primary}10`,
-                boxShadow: isMyTurn ? `0 0 30px ${colors.primary}30` : 'none'
+                background: `linear-gradient(135deg, ${colors.primary}20, ${colors.secondary}10)`,
+                borderColor: colors.primary,
+                boxShadow: `0 0 40px ${colors.primary}30`
               }}
-              onClick={isMyTurn ? handleDrawCard : undefined}
-              title={isMyTurn ? "Click to draw a card" : "Wait for your turn"}
             >
-              <div>
-                <p className="text-6xl mb-2">🎴</p>
-                <p className="text-xs font-poppins font-bold" style={{ color: colors.text }}>
-                  {gameState?.deck?.length || 0} cards
+              <p className="text-6xl mb-4">🏆</p>
+              <h2 className="text-3xl font-orbitron font-bold mb-2" style={{ color: colors.text }}>
+                You Finished!
+              </h2>
+              <p className="text-xl font-raleway mb-4" style={{ color: colors.textSecondary }}>
+                Position: {getMedalEmoji(myPlayer.position)} #{myPlayer.position}
+              </p>
+              <p className="text-lg font-poppins" style={{ color: colors.primary }}>
+                Score: {myPlayer.score} points
+              </p>
+              <p className="text-sm font-poppins mt-4" style={{ color: colors.textSecondary }}>
+                Waiting for other players to finish...
+              </p>
+            </div>
+          </div>
+        ) : (
+          // Active Player View
+          <>
+            <div className="mb-8 flex justify-center items-center gap-8">
+              {/* Draw Pile */}
+              <div className="text-center">
+                <div
+                  className={`w-32 h-48 rounded-lg flex items-center justify-center border-4 ${
+                    isMyTurn ? 'border-dashed cursor-pointer hover:scale-105 hover:shadow-2xl' : 'border-solid cursor-not-allowed'
+                  } transition-all`}
+                  style={{
+                    borderColor: isMyTurn ? `${colors.primary}` : `${colors.primary}40`,
+                    background: isMyTurn ? `${colors.primary}20` : `${colors.primary}10`,
+                    boxShadow: isMyTurn ? `0 0 30px ${colors.primary}30` : 'none'
+                  }}
+                  onClick={isMyTurn ? handleDrawCard : undefined}
+                  title={isMyTurn ? "Click to draw a card" : "Wait for your turn"}
+                >
+                  <div>
+                    <p className="text-6xl mb-2">🎴</p>
+                    <p className="text-xs font-poppins font-bold" style={{ color: colors.text }}>
+                      {gameState?.deck?.length || 0} cards
+                    </p>
+                  </div>
+                </div>
+                <p className="mt-2 font-raleway font-bold" style={{ color: colors.text }}>
+                  Draw Pile
+                </p>
+              </div>
+
+              {/* Current Card */}
+              <div className="text-center">
+                {gameState?.currentCard && (
+                  <div
+                    className="w-32 h-48 rounded-lg flex items-center justify-center text-6xl font-black shadow-2xl"
+                    style={{
+                      background: gameState.currentColor 
+                        ? getCardColor({ color: gameState.currentColor })
+                        : getCardColor(gameState.currentCard),
+                      color: '#fff',
+                      boxShadow: `0 0 40px ${
+                        gameState.currentColor 
+                          ? getCardColor({ color: gameState.currentColor })
+                          : getCardColor(gameState.currentCard)
+                      }60`,
+                      border: '4px solid rgba(255,255,255,0.3)'
+                    }}
+                  >
+                    {getCardDisplay(gameState.currentCard)}
+                  </div>
+                )}
+                <p className="mt-2 font-raleway font-bold" style={{ color: colors.text }}>
+                  Current Card
+                </p>
+                <p className="text-sm font-poppins font-bold" style={{ color: colors.primary }}>
+                  Color: <span className="capitalize">{gameState?.currentColor || 'N/A'}</span>
                 </p>
               </div>
             </div>
-            <p className="mt-2 font-raleway font-bold" style={{ color: colors.text }}>
-              Draw Pile
-            </p>
-          </div>
 
-          {/* Current Card */}
-          <div className="text-center">
-            {gameState?.currentCard && (
-              <div
-                className="w-32 h-48 rounded-lg flex items-center justify-center text-6xl font-black shadow-2xl"
-                style={{
-                  background: gameState.currentColor 
-                    ? getCardColor({ color: gameState.currentColor })
-                    : getCardColor(gameState.currentCard),
-                  color: '#fff',
-                  boxShadow: `0 0 40px ${
-                    gameState.currentColor 
-                      ? getCardColor({ color: gameState.currentColor })
-                      : getCardColor(gameState.currentCard)
-                  }60`,
-                  border: '4px solid rgba(255,255,255,0.3)'
-                }}
-              >
-                {getCardDisplay(gameState.currentCard)}
-              </div>
-            )}
-            <p className="mt-2 font-raleway font-bold" style={{ color: colors.text }}>
-              Current Card
-            </p>
-            <p className="text-sm font-poppins font-bold" style={{ color: colors.primary }}>
-              Color: <span className="capitalize">{gameState?.currentColor || 'N/A'}</span>
-            </p>
-          </div>
-        </div>
-
-        {/* Turn Indicator */}
-        <div 
-          className="mb-6 p-4 rounded-lg border text-center transition-all"
-          style={{
-            background: isMyTurn ? `${colors.primary}20` : `${colors.secondary}10`,
-            borderColor: isMyTurn ? colors.primary : `${colors.secondary}40`,
-            boxShadow: isMyTurn ? `0 0 20px ${colors.primary}30` : 'none'
-          }}
-        >
-          <p className="text-2xl font-orbitron font-bold" style={{ color: colors.text }}>
-            {isMyTurn ? '🎯 It\'s your turn!' : `⏳ Waiting for ${gameState?.currentPlayer}...`}
-          </p>
-        </div>
-
-        {/* Your Hand */}
-        <div 
-          className="p-6 rounded-2xl border"
-          style={{
-            background: colors.surface,
-            borderColor: `${colors.primary}30`
-          }}
-        >
-          <h2 className="text-2xl font-orbitron font-bold mb-4" style={{ color: colors.text }}>
-            Your Hand ({myHand.length} cards)
-          </h2>
-
-          {isLoading ? (
-            <div className="text-center py-12">
-              <div className="inline-block animate-spin rounded-full h-16 w-16 border-t-4 border-b-4" style={{ borderColor: colors.primary }}></div>
-              <p className="mt-4 font-poppins" style={{ color: colors.textSecondary }}>
-                Loading your cards...
+            {/* Turn Indicator */}
+            <div 
+              className="mb-6 p-4 rounded-lg border text-center transition-all"
+              style={{
+                background: isMyTurn ? `${colors.primary}20` : `${colors.secondary}10`,
+                borderColor: isMyTurn ? colors.primary : `${colors.secondary}40`,
+                boxShadow: isMyTurn ? `0 0 20px ${colors.primary}30` : 'none'
+              }}
+            >
+              <p className="text-2xl font-orbitron font-bold" style={{ color: colors.text }}>
+                {isMyTurn ? '🎯 It\'s your turn!' : `⏳ Waiting for ${gameState?.currentPlayer}...`}
               </p>
+              {gameState?.drawCount > 0 && (
+                <p className="text-lg font-raleway mt-2 animate-pulse" style={{ color: '#ef4444' }}>
+                  ⚠️ Draw Penalty Active: +{gameState.drawCount} cards! 
+                  {isMyTurn && ' (Stack a draw card or draw all cards)'}
+                </p>
+              )}
             </div>
-          ) : myHand.length === 0 ? (
-            <div className="text-center py-12">
-              <p className="text-xl font-poppins" style={{ color: colors.textSecondary }}>
-                No cards in hand
-              </p>
+
+            {/* Your Hand */}
+            <div 
+              className="p-6 rounded-2xl border"
+              style={{
+                background: colors.surface,
+                borderColor: `${colors.primary}30`
+              }}
+            >
+              <h2 className="text-2xl font-orbitron font-bold mb-4" style={{ color: colors.text }}>
+                Your Hand ({myHand.length} cards)
+              </h2>
+
+              {isLoading ? (
+                <div className="text-center py-12">
+                  <div className="inline-block animate-spin rounded-full h-16 w-16 border-t-4 border-b-4" style={{ borderColor: colors.primary }}></div>
+                  <p className="mt-4 font-poppins" style={{ color: colors.textSecondary }}>
+                    Loading your cards...
+                  </p>
+                </div>
+              ) : myHand.length === 0 ? (
+                <div className="text-center py-12">
+                  <p className="text-xl font-poppins" style={{ color: colors.textSecondary }}>
+                    No cards in hand
+                  </p>
+                </div>
+              ) : (
+                <div className="flex flex-wrap gap-4 justify-center">
+                  {myHand.map((card, index) => {
+                    const playable = isMyTurn && canPlayCard(card);
+                    const cardColor = getCardColor(card);
+                    
+                    return (
+                      <div
+                        key={`${card.color}-${card.type}-${card.value}-${index}`}
+                        className={`w-24 h-36 rounded-lg flex items-center justify-center text-4xl font-black transition-all ${
+                          playable 
+                            ? 'cursor-pointer hover:scale-125 hover:-translate-y-4 shadow-2xl' 
+                            : isMyTurn
+                            ? 'cursor-not-allowed opacity-60'
+                            : 'opacity-80'
+                        }`}
+                        style={{
+                          background: cardColor,
+                          color: '#fff',
+                          boxShadow: playable 
+                            ? `0 0 40px ${cardColor}90, 0 10px 30px rgba(0,0,0,0.5)` 
+                            : `0 4px 10px rgba(0,0,0,0.3)`,
+                          border: playable 
+                            ? `4px solid ${colors.glow}` 
+                            : '3px solid rgba(255,255,255,0.2)',
+                          transform: playable ? 'scale(1)' : 'scale(0.95)',
+                          filter: (!isMyTurn || playable) ? 'none' : 'grayscale(0.3) brightness(0.8)'
+                        }}
+                        onClick={() => playable && handlePlayCard(index)}
+                        title={
+                          !isMyTurn 
+                            ? `Wait for your turn (${gameState?.currentPlayer}'s turn)` 
+                            : playable 
+                            ? 'Click to play' 
+                            : 'Cannot play - no match'
+                        }
+                      >
+                        {getCardDisplay(card)}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
-          ) : (
-            <div className="flex flex-wrap gap-4 justify-center">
-              {myHand.map((card, index) => {
-                const playable = isMyTurn && canPlayCard(card);
-                const cardColor = getCardColor(card);
-                
-                return (
-                  <div
-                    key={`${card.color}-${card.type}-${card.value}-${index}`}
-                    className={`w-24 h-36 rounded-lg flex items-center justify-center text-4xl font-black transition-all ${
-                      playable 
-                        ? 'cursor-pointer hover:scale-125 hover:-translate-y-4 shadow-2xl' 
-                        : isMyTurn
-                        ? 'cursor-not-allowed opacity-60'
-                        : 'opacity-80'
-                    }`}
-                    style={{
-                      background: cardColor,
-                      color: '#fff',
-                      boxShadow: playable 
-                        ? `0 0 40px ${cardColor}90, 0 10px 30px rgba(0,0,0,0.5)` 
-                        : `0 4px 10px rgba(0,0,0,0.3)`,
-                      border: playable 
-                        ? `4px solid ${colors.glow}` 
-                        : '3px solid rgba(255,255,255,0.2)',
-                      transform: playable ? 'scale(1)' : 'scale(0.95)',
-                      filter: (!isMyTurn || playable) ? 'none' : 'grayscale(0.3) brightness(0.8)'
-                    }}
-                    onClick={() => playable && handlePlayCard(index)}
-                    title={
-                      !isMyTurn 
-                        ? `Wait for your turn (${gameState?.currentPlayer}'s turn)` 
-                        : playable 
-                        ? 'Click to play' 
-                        : 'Cannot play - no match'
-                    }
-                  >
-                    {getCardDisplay(card)}
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
+          </>
+        )}
 
         {/* Color Picker Modal */}
         {showColorPicker && (
@@ -558,6 +699,110 @@ export default function UNOGame({ roomCode, username, players, initialGameState,
                     {color}
                   </button>
                 ))}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Game Over Modal */}
+        {showGameOver && gameOverData && (
+          <div 
+            className="fixed inset-0 bg-black bg-opacity-90 flex items-center justify-center z-50"
+          >
+            <div 
+              className="p-8 rounded-2xl border max-w-2xl w-full mx-4"
+              style={{
+                background: colors.surface,
+                borderColor: colors.primary,
+                boxShadow: `0 0 60px ${colors.primary}60`
+              }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="text-center mb-8">
+                <h2 
+                  className="text-5xl font-orbitron font-black mb-2"
+                  style={{
+                    background: `linear-gradient(135deg, ${colors.primary}, ${colors.secondary})`,
+                    WebkitBackgroundClip: 'text',
+                    WebkitTextFillColor: 'transparent'
+                  }}
+                >
+                  🎉 Game Over! 🎉
+                </h2>
+                <p className="text-lg font-raleway" style={{ color: colors.textSecondary }}>
+                  Final Rankings
+                </p>
+              </div>
+
+              <div className="space-y-3 mb-8">
+                {gameOverData.rankings?.map((player, index) => (
+                  <div
+                    key={player.name}
+                    className="p-4 rounded-lg border-2 transition-all"
+                    style={{
+                      background: index === 0 
+                        ? `linear-gradient(135deg, ${colors.primary}30, ${colors.secondary}20)`
+                        : player.name === username
+                        ? `${colors.secondary}20`
+                        : 'rgba(0, 0, 0, 0.3)',
+                      borderColor: index === 0 
+                        ? colors.primary
+                        : player.name === username
+                        ? colors.secondary
+                        : `${colors.primary}30`
+                    }}
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-4">
+                        <span className="text-4xl">{getMedalEmoji(player.position)}</span>
+                        <div>
+                          <p className="text-xl font-orbitron font-bold" style={{ color: colors.text }}>
+                            #{player.position} - {player.name} {player.name === username && '(You)'}
+                          </p>
+                          <p className="text-sm font-poppins" style={{ color: colors.textSecondary }}>
+                            {player.position === 1 ? 'Winner!' : `Position ${player.position}`}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-3xl font-black" style={{ color: colors.primary }}>
+                          {player.points}
+                        </p>
+                        <p className="text-xs font-poppins" style={{ color: colors.textSecondary }}>
+                          points
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <div className="flex gap-4">
+                <button
+                  onClick={handleRestartGame}
+                  className="flex-1 px-8 py-4 rounded-lg font-raleway font-bold text-lg transition-all hover:scale-105"
+                  style={{
+                    background: `linear-gradient(135deg, ${colors.primary}, ${colors.secondary})`,
+                    color: '#fff',
+                    boxShadow: `0 0 30px ${colors.primary}60`
+                  }}
+                >
+                  🔄 Play Again
+                </button>
+                <button
+                  onClick={() => {
+                    setShowGameOver(false);
+                    onLeaveRoom();
+                  }}
+                  className="flex-1 px-8 py-4 rounded-lg font-raleway font-bold text-lg transition-all hover:scale-105 border"
+                  style={{
+                    background: 'rgba(239, 68, 68, 0.1)',
+                    borderColor: 'rgba(239, 68, 68, 0.5)',
+                    color: '#ef4444'
+                  }}
+                >
+                  🚪 Return to Lobby
+                </button>
               </div>
             </div>
           </div>
