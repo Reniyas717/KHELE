@@ -19,7 +19,6 @@ function initWebSocket(server) {
     let currentUsername = null;
     let currentRoomCode = null;
 
-    // Send connection confirmation
     ws.send(JSON.stringify({ 
       type: 'CONNECTED',
       payload: { message: 'WebSocket connected' }
@@ -53,15 +52,19 @@ function initWebSocket(server) {
             await handleSelectWord(ws, data.payload);
             break;
             
-          case 'DRAW_LINE':
-            await handleDrawLine(ws, data.payload);
+          case 'CANVAS_DRAW':
+            await handleCanvasDraw(ws, data.payload);
             break;
             
-          case 'CLEAR_CANVAS':
-            await handleClearCanvas(ws, data.payload);
+          case 'CANVAS_CLEAR':
+            await handleCanvasClear(ws, data.payload);
             break;
             
-          case 'GUESS_WORD':
+          case 'SEND_MESSAGE':
+            await handleSendMessage(ws, data.payload);
+            break;
+            
+          case 'SUBMIT_GUESS':
             await handleGuessWord(ws, data.payload);
             break;
             
@@ -183,11 +186,9 @@ async function handleJoinRoom(ws, payload) {
 
     console.log('✅ Room found:', normalizedCode);
 
-    // Check if player already exists
     const existingPlayer = room.players.find(p => p.username === username);
     const isNewPlayer = !existingPlayer;
 
-    // Add player if not exists
     if (isNewPlayer) {
       room.players.push({
         username,
@@ -202,7 +203,6 @@ async function handleJoinRoom(ws, payload) {
       console.log('♻️ Existing player reconnecting:', username);
     }
 
-    // Store connection BEFORE sending any messages
     clients.set(username, { ws, roomCode: normalizedCode });
     
     if (!roomConnections.has(normalizedCode)) {
@@ -210,10 +210,8 @@ async function handleJoinRoom(ws, payload) {
     }
     roomConnections.get(normalizedCode).add(username);
 
-    console.log(`📊 Room ${normalizedCode} now has ${roomConnections.get(normalizedCode).size} connected clients:`, 
-      Array.from(roomConnections.get(normalizedCode)));
+    console.log(`📊 Room ${normalizedCode} now has ${roomConnections.get(normalizedCode).size} connected clients`);
 
-    // Get updated room data
     const updatedRoom = await GameRoom.findOne({ 
       roomCode: normalizedCode,
       isActive: true 
@@ -231,17 +229,13 @@ async function handleJoinRoom(ws, payload) {
       }))
     };
 
-    // Send ROOM_JOINED to the joining player
     ws.send(JSON.stringify({
       type: 'ROOM_JOINED',
       payload: { room: roomData }
     }));
     console.log(`✅ Sent ROOM_JOINED to ${username}`);
 
-    // Notify ALL players (including the one who just joined) about the updated player list
-    // This ensures everyone has the same view
     setTimeout(() => {
-      console.log(`📢 Broadcasting PLAYER_JOINED for ${username}`);
       broadcastToRoom(normalizedCode, {
         type: 'PLAYER_JOINED',
         payload: {
@@ -251,12 +245,7 @@ async function handleJoinRoom(ws, payload) {
       });
     }, 100);
 
-    console.log('✅ JOIN complete:', { 
-      username, 
-      roomCode: normalizedCode, 
-      totalPlayers: updatedRoom.players.length,
-      connectedClients: roomConnections.get(normalizedCode).size 
-    });
+    console.log('✅ JOIN complete');
     
     return { success: true };
 
@@ -277,7 +266,6 @@ async function handleLeaveRoom(ws, payload) {
     
     console.log(`👋 LEAVE_ROOM: ${username} from ${normalizedCode}`);
 
-    // Remove from connection maps
     const users = roomConnections.get(normalizedCode);
     if (users) {
       users.delete(username);
@@ -287,7 +275,6 @@ async function handleLeaveRoom(ws, payload) {
     }
     clients.delete(username);
 
-    // Update database
     const room = await GameRoom.findOne({ 
       roomCode: normalizedCode,
       isActive: true 
@@ -298,22 +285,18 @@ async function handleLeaveRoom(ws, payload) {
       return;
     }
 
-    // Remove player from room
     room.players = room.players.filter(p => p.username !== username);
     
-    // Only deactivate if no players left OR if game hasn't started and host left
     if (room.players.length === 0) {
       room.isActive = false;
       await room.save();
       console.log(`🗑️ Room ${normalizedCode} deactivated (no players)`);
     } else if (room.host === username && room.status === 'waiting') {
-      // Host left during waiting - transfer to next player
       room.host = room.players[0].username;
       await room.save();
       
       console.log(`👑 Host transferred to ${room.host}`);
       
-      // Notify remaining players
       broadcastToRoom(normalizedCode, {
         type: 'PLAYER_LEFT',
         payload: {
@@ -334,7 +317,6 @@ async function handleLeaveRoom(ws, payload) {
         }
       });
     } else if (room.host === username && room.status === 'in-progress') {
-      // Host left during game - end the game
       room.isActive = false;
       room.status = 'finished';
       await room.save();
@@ -346,7 +328,6 @@ async function handleLeaveRoom(ws, payload) {
         payload: { message: 'Host left the game' }
       });
     } else {
-      // Regular player left
       await room.save();
       
       broadcastToRoom(normalizedCode, {
@@ -412,43 +393,64 @@ async function handleStartGame(ws, payload) {
 
     room.status = 'in-progress';
 
-    // Initialize game
     const playerNames = room.players.map(p => p.username);
     
     if (room.gameType === 'scribble') {
       room.gameState = initScribbleGame(playerNames);
+      await room.save();
+      
       console.log('✅ Scribble game initialized');
+      
+      // Broadcast game started to all
+      broadcastToRoom(normalizedCode, {
+        type: 'GAME_STARTED',
+        payload: {
+          gameType: room.gameType,
+          gameState: room.gameState
+        }
+      });
+      
+      // Send word choices to drawer ONLY
+      setTimeout(() => {
+        const drawerClient = clients.get(room.gameState.currentDrawer);
+        if (drawerClient && drawerClient.ws.readyState === WebSocket.OPEN) {
+          drawerClient.ws.send(JSON.stringify({
+            type: 'WORD_CHOICES',
+            payload: { 
+              wordChoices: room.gameState.wordOptions 
+            }
+          }));
+          console.log(`📝 Sent word choices to drawer: ${room.gameState.currentDrawer}`);
+        }
+      }, 500);
+      
     } else if (room.gameType === 'uno') {
       room.gameState = initUNOGame(playerNames);
       
-      // Store hands in player records
       room.gameState.players.forEach((gp, index) => {
         room.players[index].hand = gp.hand;
       });
       
+      await room.save();
+      
       console.log('✅ UNO game initialized');
+      
+      broadcastToRoom(normalizedCode, {
+        type: 'GAME_STARTED',
+        payload: {
+          gameType: room.gameType,
+          gameState: {
+            ...room.gameState,
+            players: room.gameState.players.map(p => ({
+              name: p.name,
+              score: p.score,
+              hand: []
+            })),
+            deck: []
+          }
+        }
+      });
     }
-
-    await room.save();
-
-    // Broadcast game start to ALL players
-    broadcastToRoom(normalizedCode, {
-      type: 'GAME_STARTED',
-      payload: {
-        gameType: room.gameType,
-        gameState: room.gameType === 'uno' 
-          ? {
-              ...room.gameState,
-              players: room.gameState.players.map(p => ({
-                name: p.name,
-                score: p.score,
-                hand: [] // Don't send hands in broadcast
-              })),
-              deck: [] // Don't send deck
-            }
-          : room.gameState
-      }
-    });
 
     console.log('✅ Game started and broadcasted');
   } catch (error) {
@@ -460,8 +462,234 @@ async function handleStartGame(ws, payload) {
   }
 }
 
-// Update the handlePlayCard function to check game state after every play
+// Handle canvas drawing
+async function handleCanvasDraw(ws, payload) {
+  try {
+    const { roomCode, drawData } = payload;
+    const normalizedCode = roomCode.toUpperCase().trim();
+    
+    console.log('🎨 CANVAS_DRAW received:', normalizedCode);
+    
+    const connections = roomConnections.get(normalizedCode);
+    if (!connections) {
+      console.log('❌ No connections found for room:', normalizedCode);
+      return;
+    }
+    
+    // Broadcast to all OTHER players
+    connections.forEach((username) => {
+      const client = clients.get(username);
+      if (client && client.ws !== ws && client.ws.readyState === WebSocket.OPEN) {
+        client.ws.send(JSON.stringify({
+          type: 'CANVAS_DRAW',
+          payload: { drawData }
+        }));
+      }
+    });
+    
+    console.log(`✅ Canvas draw broadcasted to ${connections.size - 1} players`);
+  } catch (error) {
+    console.error('❌ Error in handleCanvasDraw:', error);
+  }
+}
 
+// Handle canvas clear
+async function handleCanvasClear(ws, payload) {
+  try {
+    const { roomCode } = payload;
+    const normalizedCode = roomCode.toUpperCase().trim();
+    
+    console.log('🧹 CANVAS_CLEAR received:', normalizedCode);
+    
+    broadcastToRoom(normalizedCode, {
+      type: 'CANVAS_CLEAR',
+      payload: {}
+    });
+    
+    console.log('✅ Canvas clear broadcasted');
+  } catch (error) {
+    console.error('❌ Error in handleCanvasClear:', error);
+  }
+}
+
+// Handle chat messages
+async function handleSendMessage(ws, payload) {
+  try {
+    const { roomCode, username, message } = payload;
+    const normalizedCode = roomCode.toUpperCase().trim();
+    
+    console.log('💬 SEND_MESSAGE:', { roomCode: normalizedCode, username, message });
+    
+    broadcastToRoom(normalizedCode, {
+      type: 'CHAT_MESSAGE',
+      payload: { username, message }
+    });
+    
+    console.log('✅ Message broadcasted');
+  } catch (error) {
+    console.error('❌ Error in handleSendMessage:', error);
+  }
+}
+
+// Scribble: Select word
+async function handleSelectWord(ws, payload) {
+  try {
+    const { roomCode, word, username } = payload;
+    const normalizedCode = roomCode.toUpperCase().trim();
+    
+    console.log('📝 SELECT_WORD:', { roomCode: normalizedCode, word, username });
+    
+    const room = await GameRoom.findOne({ roomCode: normalizedCode, isActive: true });
+    
+    if (!room || !room.gameState) {
+      ws.send(JSON.stringify({
+        type: 'ERROR',
+        payload: { message: 'Game not found' }
+      }));
+      return;
+    }
+
+    room.gameState = selectWord(room.gameState, word);
+    await room.save();
+    
+    // Send full word to drawer
+    const drawerClient = clients.get(username);
+    if (drawerClient && drawerClient.ws.readyState === WebSocket.OPEN) {
+      drawerClient.ws.send(JSON.stringify({
+        type: 'ROUND_START',
+        payload: { gameState: room.gameState }
+      }));
+    }
+    
+    // Send masked word to guessers
+    const guesserGameState = {
+      ...room.gameState,
+      currentWord: room.gameState.currentWord.replace(/./g, '_')
+    };
+    
+    roomConnections.get(normalizedCode).forEach((playerName) => {
+      if (playerName !== username) {
+        const client = clients.get(playerName);
+        if (client && client.ws.readyState === WebSocket.OPEN) {
+          client.ws.send(JSON.stringify({
+            type: 'ROUND_START',
+            payload: { gameState: guesserGameState }
+          }));
+        }
+      }
+    });
+
+    console.log(`✅ Word selected: ${word} by ${username}`);
+  } catch (error) {
+    console.error('❌ Error in handleSelectWord:', error);
+    ws.send(JSON.stringify({
+      type: 'ERROR',
+      payload: { message: error.message }
+    }));
+  }
+}
+
+// Scribble: Guess word
+async function handleGuessWord(ws, payload) {
+  try {
+    const { roomCode, username, guess } = payload;
+    const normalizedCode = roomCode.toUpperCase().trim();
+    
+    console.log('🎯 GUESS_WORD:', { roomCode: normalizedCode, username, guess });
+    
+    const room = await GameRoom.findOne({ roomCode: normalizedCode, isActive: true });
+    
+    if (!room || !room.gameState) {
+      return;
+    }
+
+    const result = handleGuess(room.gameState, username, guess);
+    
+    if (result.correct) {
+      room.gameState = result.gameState;
+      await room.save();
+      
+      broadcastToRoom(normalizedCode, {
+        type: 'CORRECT_GUESS',
+        payload: { 
+          player: username,
+          points: result.points, 
+          gameState: room.gameState 
+        }
+      });
+
+      const allGuessed = room.gameState.players
+        .filter(p => p.username !== room.gameState.currentDrawer)
+        .every(p => p.hasGuessed);
+
+      if (allGuessed) {
+        setTimeout(() => {
+          handleNextRound(ws, { roomCode: normalizedCode });
+        }, 3000);
+      }
+    } else {
+      broadcastToRoom(normalizedCode, {
+        type: 'CHAT_MESSAGE',
+        payload: { username, message: guess }
+      });
+    }
+  } catch (error) {
+    console.error('❌ Error in handleGuessWord:', error);
+  }
+}
+
+// Scribble: Next round
+async function handleNextRound(ws, payload) {
+  try {
+    const { roomCode } = payload;
+    const normalizedCode = roomCode.toUpperCase().trim();
+    
+    console.log('➡️ NEXT_ROUND:', normalizedCode);
+    
+    const room = await GameRoom.findOne({ roomCode: normalizedCode, isActive: true });
+    
+    if (!room || !room.gameState) {
+      return;
+    }
+
+    const result = nextRound(room.gameState);
+    
+    if (result.gameOver) {
+      broadcastToRoom(normalizedCode, {
+        type: 'GAME_OVER',
+        payload: result
+      });
+      
+      room.status = 'finished';
+      await room.save();
+    } else {
+      room.gameState = result.gameState;
+      await room.save();
+      
+      broadcastToRoom(normalizedCode, {
+        type: 'NEXT_ROUND',
+        payload: { gameState: result.gameState }
+      });
+      
+      // Send new word choices to new drawer
+      setTimeout(() => {
+        const drawerClient = clients.get(room.gameState.currentDrawer);
+        if (drawerClient && drawerClient.ws.readyState === WebSocket.OPEN) {
+          drawerClient.ws.send(JSON.stringify({
+            type: 'WORD_CHOICES',
+            payload: { 
+              wordChoices: room.gameState.wordOptions 
+            }
+          }));
+        }
+      }, 500);
+    }
+  } catch (error) {
+    console.error('❌ Error in handleNextRound:', error);
+  }
+}
+
+// UNO game handlers
 async function handlePlayCard(ws, payload) {
   try {
     const { roomCode, username, cardIndex, chosenColor } = payload;
@@ -480,7 +708,6 @@ async function handlePlayCard(ws, payload) {
       return;
     }
 
-    // Log current state before play
     const beforeFinished = room.gameState.players.filter(p => p.finished).length;
     console.log('📊 BEFORE PLAY:', {
       currentPlayer: room.gameState.currentPlayer,
@@ -498,7 +725,6 @@ async function handlePlayCard(ws, payload) {
     if (result.success) {
       room.gameState = result.gameState;
       
-      // Log current state after play
       const afterFinished = room.gameState.players.filter(p => p.finished).length;
       const remainingActive = room.gameState.players.filter(p => !p.finished).length;
       
@@ -514,11 +740,9 @@ async function handlePlayCard(ws, payload) {
         }))
       });
       
-      // CHECK IF GAME SHOULD END (n-1 players finished)
       if (remainingActive <= 1 && !result.gameOver) {
         console.log('🚨 FORCE GAME OVER - Only 1 or 0 players remaining!');
         
-        // Assign last position to remaining players
         room.gameState.players.forEach(p => {
           if (!p.finished) {
             p.finished = true;
@@ -527,7 +751,6 @@ async function handlePlayCard(ws, payload) {
           }
         });
         
-        // Create rankings
         const rankings = room.gameState.players
           .sort((a, b) => a.position - b.position)
           .map(p => ({
@@ -542,7 +765,6 @@ async function handlePlayCard(ws, payload) {
         console.log('🏆 FORCED RANKINGS:', rankings);
       }
       
-      // Update player hands in room.players array
       room.gameState.players.forEach((gamePlayer) => {
         const roomPlayer = room.players.find(p => p.username === gamePlayer.name);
         if (roomPlayer) {
@@ -556,7 +778,6 @@ async function handlePlayCard(ws, payload) {
       
       console.log('💾 Game state saved to database');
       
-      // Broadcast card played
       const broadcastGameState = {
         ...result.gameState,
         players: result.gameState.players.map(p => ({
@@ -578,7 +799,6 @@ async function handlePlayCard(ws, payload) {
         }
       });
       
-      // Handle auto-draw
       if (result.autoDrawn && !result.gameOver) {
         setTimeout(() => {
           broadcastToRoom(normalizedCode, {
@@ -592,7 +812,6 @@ async function handlePlayCard(ws, payload) {
         }, 500);
       }
       
-      // Handle player finished (not game over yet)
       if (result.playerFinished && !result.gameOver) {
         console.log(`🎯 Player finished but game continues: ${result.playerFinished}`);
         broadcastToRoom(normalizedCode, {
@@ -606,7 +825,6 @@ async function handlePlayCard(ws, payload) {
         });
       }
       
-      // Handle game over
       if (result.gameOver) {
         console.log('🏁 GAME OVER! Broadcasting final rankings...');
         console.log('🏆 Rankings:', result.rankings);
@@ -667,7 +885,6 @@ async function handleDrawCardAction(ws, payload) {
     const result = drawCard(room.gameState, username);
     
     if (result.success) {
-      // Update the game state
       room.gameState = result.gameState;
       
       console.log('📊 After draw - Current player:', room.gameState.currentPlayer);
@@ -676,7 +893,6 @@ async function handleDrawCardAction(ws, payload) {
         cards: p.hand.length 
       })));
       
-      // Update player hands in room.players array
       room.gameState.players.forEach((gamePlayer) => {
         const roomPlayer = room.players.find(p => p.username === gamePlayer.name);
         if (roomPlayer) {
@@ -684,22 +900,18 @@ async function handleDrawCardAction(ws, payload) {
         }
       });
       
-      // Mark the document as modified to ensure save works
       room.markModified('gameState');
       room.markModified('players');
       
-      // Save to database
       await room.save();
       
       console.log('💾 Game state saved to database');
       
-      // Verify the save worked
       const verifyRoom = await GameRoom.findOne({ roomCode: normalizedCode, isActive: true });
       console.log('✅ Verified saved state - Current player:', verifyRoom.gameState.currentPlayer);
       
       console.log('✅ Card drawn successfully, broadcasting...');
       
-      // Broadcast with full player info INCLUDING card counts
       const broadcastGameState = {
         ...result.gameState,
         players: result.gameState.players.map(p => ({
@@ -741,7 +953,6 @@ async function handleRequestHand(ws, payload) {
     
     console.log(`🤚 REQUEST_HAND: ${username} in ${normalizedCode}`);
     
-    // Fetch fresh data from database
     const room = await GameRoom.findOne({ 
       roomCode: normalizedCode,
       isActive: true 
@@ -784,7 +995,6 @@ async function handleRequestHand(ws, payload) {
 
     console.log(`✅ Sending ${player.hand.length} cards to ${username}`);
 
-    // Send both hand AND current game state to ensure sync
     ws.send(JSON.stringify({
       type: 'HAND_UPDATE',
       payload: {
@@ -795,10 +1005,13 @@ async function handleRequestHand(ws, payload) {
           currentCard: room.gameState.currentCard,
           currentColor: room.gameState.currentColor,
           direction: room.gameState.direction,
+          drawCount: room.gameState.drawCount,
           players: room.gameState.players.map(p => ({
             name: p.name,
             score: p.score,
             cardCount: p.hand.length,
+            finished: p.finished,
+            position: p.position,
             hand: []
           }))
         }
@@ -806,329 +1019,6 @@ async function handleRequestHand(ws, payload) {
     }));
   } catch (error) {
     console.error('❌ Error in handleRequestHand:', error);
-    ws.send(JSON.stringify({
-      type: 'ERROR',
-      payload: { message: error.message }
-    }));
-  }
-}
-
-// Scribble game handlers
-async function handleSelectWord(ws, payload) {
-  try {
-    const { roomCode, word, username } = payload;
-    const normalizedCode = roomCode.toUpperCase().trim();
-    const room = await GameRoom.findOne({ roomCode: normalizedCode, isActive: true });
-    
-    if (!room || !room.gameState) {
-      ws.send(JSON.stringify({
-        type: 'ERROR',
-        payload: { message: 'Game not found' }
-      }));
-      return;
-    }
-
-    room.gameState = selectWord(room.gameState, word);
-    await room.save();
-    
-    broadcastToRoom(normalizedCode, {
-      type: 'WORD_SELECTED',
-      payload: { gameState: room.gameState }
-    });
-
-    console.log(`✅ Word selected: ${word} by ${username}`);
-  } catch (error) {
-    console.error('❌ Error in handleSelectWord:', error);
-    ws.send(JSON.stringify({
-      type: 'ERROR',
-      payload: { message: error.message }
-    }));
-  }
-}
-
-async function handleDrawLine(ws, payload) {
-  const { roomCode, line } = payload;
-  broadcastToRoom(roomCode.toUpperCase().trim(), {
-    type: 'DRAW_LINE',
-    payload: { line }
-  });
-}
-
-async function handleClearCanvas(ws, payload) {
-  const { roomCode } = payload;
-  broadcastToRoom(roomCode.toUpperCase().trim(), {
-    type: 'CLEAR_CANVAS'
-  });
-}
-
-async function handleGuessWord(ws, payload) {
-  try {
-    const { roomCode, username, guess } = payload;
-    const normalizedCode = roomCode.toUpperCase().trim();
-    const room = await GameRoom.findOne({ roomCode: normalizedCode, isActive: true });
-    
-    if (!room || !room.gameState) {
-      return;
-    }
-
-    const result = handleGuess(room.gameState, username, guess);
-    
-    if (result.correct) {
-      room.gameState = result.gameState;
-      await room.save();
-      
-      broadcastToRoom(normalizedCode, {
-        type: 'CORRECT_GUESS',
-        payload: { 
-          username, 
-          points: result.points, 
-          gameState: room.gameState 
-        }
-      });
-
-      // Check if all players guessed
-      const allGuessed = room.gameState.players
-        .filter(p => p.username !== room.gameState.currentDrawer)
-        .every(p => p.hasGuessed);
-
-      if (allGuessed) {
-        setTimeout(() => {
-          handleNextRound(ws, { roomCode: normalizedCode });
-        }, 3000);
-      }
-    } else {
-      broadcastToRoom(normalizedCode, {
-        type: 'CHAT_MESSAGE',
-        payload: { username, message: guess, isCorrect: false }
-      });
-    }
-  } catch (error) {
-    console.error('❌ Error in handleGuessWord:', error);
-  }
-}
-
-async function handleNextRound(ws, payload) {
-  try {
-    const { roomCode } = payload;
-    const normalizedCode = roomCode.toUpperCase().trim();
-    const room = await GameRoom.findOne({ roomCode: normalizedCode, isActive: true });
-    
-    if (!room || !room.gameState) {
-      return;
-    }
-
-    const result = nextRound(room.gameState);
-    
-    if (result.gameOver) {
-      broadcastToRoom(normalizedCode, {
-        type: 'GAME_OVER',
-        payload: result
-      });
-      
-      room.status = 'finished';
-      await room.save();
-    } else {
-      room.gameState = result.gameState;
-      await room.save();
-      
-      broadcastToRoom(normalizedCode, {
-        type: 'NEXT_ROUND',
-        payload: { gameState: result.gameState }
-      });
-    }
-  } catch (error) {
-    console.error('❌ Error in handleNextRound:', error);
-  }
-}
-
-// UNO game handlers
-async function handlePlayCard(ws, payload) {
-  try {
-    const { roomCode, username, cardIndex, chosenColor } = payload;
-    const normalizedCode = roomCode.toUpperCase().trim();
-    
-    console.log('🎴 handlePlayCard:', { roomCode: normalizedCode, username, cardIndex, chosenColor });
-    
-    const room = await GameRoom.findOne({ roomCode: normalizedCode, isActive: true });
-    
-    if (!room || !room.gameState) {
-      console.error('❌ Room or gameState not found');
-      ws.send(JSON.stringify({
-        type: 'ERROR',
-        payload: { message: 'Game not found' }
-      }));
-      return;
-    }
-
-    console.log('📊 Before play - Current player:', room.gameState.currentPlayer);
-    console.log('📊 Before play - Players:', room.gameState.players.map(p => ({ 
-      name: p.name, 
-      cards: p.hand.length 
-    })));
-
-    const result = playCard(room.gameState, username, cardIndex, chosenColor);
-    
-    if (result.success) {
-      // Update the game state
-      room.gameState = result.gameState;
-      
-      console.log('📊 After play - Current player:', room.gameState.currentPlayer);
-      console.log('📊 After play - Players:', room.gameState.players.map(p => ({ 
-        name: p.name, 
-        cards: p.hand.length 
-      })));
-      
-      // Update player hands in room.players array
-      room.gameState.players.forEach((gamePlayer) => {
-        const roomPlayer = room.players.find(p => p.username === gamePlayer.name);
-        if (roomPlayer) {
-          roomPlayer.hand = gamePlayer.hand;
-        }
-      });
-      
-      // Mark the document as modified to ensure save works
-      room.markModified('gameState');
-      room.markModified('players');
-      
-      // Save to database
-      await room.save();
-      
-      console.log('💾 Game state saved to database');
-      
-      // Verify the save worked by checking current player
-      const verifyRoom = await GameRoom.findOne({ roomCode: normalizedCode, isActive: true });
-      console.log('✅ Verified saved state - Current player:', verifyRoom.gameState.currentPlayer);
-      
-      console.log('✅ Card played successfully, broadcasting...');
-      
-      // Broadcast with full player info INCLUDING card counts
-      const broadcastGameState = {
-        ...result.gameState,
-        players: result.gameState.players.map(p => ({
-          name: p.name,
-          score: p.score,
-          cardCount: p.hand.length,
-          hand: []
-        })),
-        deck: []
-      };
-      
-      broadcastToRoom(normalizedCode, {
-        type: 'CARD_PLAYED',
-        payload: { 
-          username,
-          gameState: broadcastGameState
-        }
-      });
-      
-      if (result.winner) {
-        broadcastToRoom(normalizedCode, {
-          type: 'GAME_OVER',
-          payload: { winner: result.winner }
-        });
-        
-        room.status = 'finished';
-        await room.save();
-      }
-    } else {
-      console.error('❌ Card play failed:', result.message);
-      ws.send(JSON.stringify({
-        type: 'ERROR',
-        payload: { message: result.message }
-      }));
-    }
-  } catch (error) {
-    console.error('❌ Error in handlePlayCard:', error);
-    ws.send(JSON.stringify({
-      type: 'ERROR',
-      payload: { message: error.message }
-    }));
-  }
-}
-
-async function handleDrawCardAction(ws, payload) {
-  try {
-    const { roomCode, username } = payload;
-    const normalizedCode = roomCode.toUpperCase().trim();
-    
-    console.log('🎴 handleDrawCardAction:', { roomCode: normalizedCode, username });
-    
-    const room = await GameRoom.findOne({ roomCode: normalizedCode, isActive: true });
-    
-    if (!room || !room.gameState) {
-      console.error('❌ Room or gameState not found');
-      ws.send(JSON.stringify({
-        type: 'ERROR',
-        payload: { message: 'Game not found' }
-      }));
-      return;
-    }
-
-    console.log('📊 Before draw - Current player:', room.gameState.currentPlayer);
-
-    const result = drawCard(room.gameState, username);
-    
-    if (result.success) {
-      // Update the game state
-      room.gameState = result.gameState;
-      
-      console.log('📊 After draw - Current player:', room.gameState.currentPlayer);
-      console.log('📊 After draw - Players:', room.gameState.players.map(p => ({ 
-        name: p.name, 
-        cards: p.hand.length 
-      })));
-      
-      // Update player hands in room.players array
-      room.gameState.players.forEach((gamePlayer) => {
-        const roomPlayer = room.players.find(p => p.username === gamePlayer.name);
-        if (roomPlayer) {
-          roomPlayer.hand = gamePlayer.hand;
-        }
-      });
-      
-      // Mark the document as modified to ensure save works
-      room.markModified('gameState');
-      room.markModified('players');
-      
-      // Save to database
-      await room.save();
-      
-      console.log('💾 Game state saved to database');
-      
-      // Verify the save worked
-      const verifyRoom = await GameRoom.findOne({ roomCode: normalizedCode, isActive: true });
-      console.log('✅ Verified saved state - Current player:', verifyRoom.gameState.currentPlayer);
-      
-      console.log('✅ Card drawn successfully, broadcasting...');
-      
-      // Broadcast with full player info INCLUDING card counts
-      const broadcastGameState = {
-        ...result.gameState,
-        players: result.gameState.players.map(p => ({
-          name: p.name,
-          score: p.score,
-          cardCount: p.hand.length,
-          hand: []
-        })),
-        deck: []
-      };
-      
-      broadcastToRoom(normalizedCode, {
-        type: 'CARD_DRAWN',
-        payload: { 
-          username,
-          gameState: broadcastGameState
-        }
-      });
-    } else {
-      console.error('❌ Card draw failed:', result.message);
-      ws.send(JSON.stringify({
-        type: 'ERROR',
-        payload: { message: result.message }
-      }));
-    }
-  } catch (error) {
-    console.error('❌ Error in handleDrawCardAction:', error);
     ws.send(JSON.stringify({
       type: 'ERROR',
       payload: { message: error.message }
