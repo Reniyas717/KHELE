@@ -512,7 +512,7 @@ async function handleCanvasClear(ws, payload) {
   }
 }
 
-// Handle chat messages
+// Handle chat messages - only visible to those who guessed correctly
 async function handleSendMessage(ws, payload) {
   try {
     const { roomCode, username, message } = payload;
@@ -520,12 +520,59 @@ async function handleSendMessage(ws, payload) {
     
     console.log('💬 SEND_MESSAGE:', { roomCode: normalizedCode, username, message });
     
-    broadcastToRoom(normalizedCode, {
-      type: 'CHAT_MESSAGE',
-      payload: { username, message }
+    const room = await GameRoom.findOne({ roomCode: normalizedCode, isActive: true });
+    
+    if (!room || !room.gameState) {
+      console.log('⚠️ Room or game state not found');
+      return;
+    }
+    
+    // Get the player who sent the message
+    const senderPlayer = room.gameState.players.find(p => p.username === username);
+    const isDrawer = username === room.gameState.currentDrawer;
+    const hasGuessed = senderPlayer?.hasGuessed || false;
+    
+    console.log(`📊 Message from ${username}: isDrawer=${isDrawer}, hasGuessed=${hasGuessed}`);
+    
+    // Determine who can see this message
+    const connections = roomConnections.get(normalizedCode);
+    if (!connections) {
+      console.log('❌ No connections found for room');
+      return;
+    }
+    
+    // Send message only to eligible players
+    connections.forEach((playerName) => {
+      const playerData = room.gameState.players.find(p => p.username === playerName);
+      const isPlayerDrawer = playerName === room.gameState.currentDrawer;
+      const playerHasGuessed = playerData?.hasGuessed || false;
+      
+      // Can see message if:
+      // 1. They are the drawer
+      // 2. They have guessed correctly
+      // 3. They are the sender
+      const canSeeMessage = isPlayerDrawer || playerHasGuessed || playerName === username;
+      
+      if (canSeeMessage) {
+        const client = clients.get(playerName);
+        if (client && client.ws.readyState === WebSocket.OPEN) {
+          client.ws.send(JSON.stringify({
+            type: 'CHAT_MESSAGE',
+            payload: { 
+              username, 
+              message,
+              isDrawer,
+              hasGuessed: hasGuessed || isDrawer
+            }
+          }));
+          console.log(`   ✅ Sent to ${playerName} (canSee: ${canSeeMessage})`);
+        }
+      } else {
+        console.log(`   ⏭️ Skipped ${playerName} (hasn't guessed)`);
+      }
     });
     
-    console.log('✅ Message broadcasted');
+    console.log('✅ Filtered message broadcast complete');
   } catch (error) {
     console.error('❌ Error in handleSendMessage:', error);
   }
@@ -549,8 +596,29 @@ async function handleSelectWord(ws, payload) {
       return;
     }
 
+    console.log('🔍 Before selectWord:', {
+      currentWord: room.gameState.currentWord,
+      wordOptions: room.gameState.wordOptions
+    });
+
+    // Update game state with selected word
     room.gameState = selectWord(room.gameState, word);
+    
+    console.log('🔍 After selectWord:', {
+      currentWord: room.gameState.currentWord,
+      roundActive: room.gameState.roundActive,
+      wordOptions: room.gameState.wordOptions
+    });
+
+    // Mark the field as modified and save
+    room.markModified('gameState');
     await room.save();
+    
+    console.log('💾 Game state saved with word:', room.gameState.currentWord);
+    
+    // Verify it was saved
+    const verifyRoom = await GameRoom.findOne({ roomCode: normalizedCode, isActive: true });
+    console.log('✅ Verified saved word:', verifyRoom.gameState.currentWord);
     
     // Send full word to drawer
     const drawerClient = clients.get(username);
@@ -559,6 +627,7 @@ async function handleSelectWord(ws, payload) {
         type: 'ROUND_START',
         payload: { gameState: room.gameState }
       }));
+      console.log(`✅ Sent ROUND_START to drawer: ${username}`);
     }
     
     // Send masked word to guessers
@@ -567,19 +636,23 @@ async function handleSelectWord(ws, payload) {
       currentWord: room.gameState.currentWord.replace(/./g, '_')
     };
     
-    roomConnections.get(normalizedCode).forEach((playerName) => {
-      if (playerName !== username) {
-        const client = clients.get(playerName);
-        if (client && client.ws.readyState === WebSocket.OPEN) {
-          client.ws.send(JSON.stringify({
-            type: 'ROUND_START',
-            payload: { gameState: guesserGameState }
-          }));
+    const connections = roomConnections.get(normalizedCode);
+    if (connections) {
+      connections.forEach((playerName) => {
+        if (playerName !== username) {
+          const client = clients.get(playerName);
+          if (client && client.ws.readyState === WebSocket.OPEN) {
+            client.ws.send(JSON.stringify({
+              type: 'ROUND_START',
+              payload: { gameState: guesserGameState }
+            }));
+            console.log(`✅ Sent ROUND_START to guesser: ${playerName}`);
+          }
         }
-      }
-    });
+      });
+    }
 
-    console.log(`✅ Word selected: ${word} by ${username}`);
+    console.log(`✅ Word selected and broadcasted: ${word}`);
   } catch (error) {
     console.error('❌ Error in handleSelectWord:', error);
     ws.send(JSON.stringify({
@@ -600,38 +673,81 @@ async function handleGuessWord(ws, payload) {
     const room = await GameRoom.findOne({ roomCode: normalizedCode, isActive: true });
     
     if (!room || !room.gameState) {
+      console.error('❌ Room or game state not found');
+      ws.send(JSON.stringify({
+        type: 'ERROR',
+        payload: { message: 'Game not found' }
+      }));
       return;
     }
 
+    console.log('🔍 Current game state:', {
+      currentWord: room.gameState.currentWord,
+      currentDrawer: room.gameState.currentDrawer,
+      roundActive: room.gameState.roundActive
+    });
+
     const result = handleGuess(room.gameState, username, guess);
     
-    if (result.correct) {
-      room.gameState = result.gameState;
-      await room.save();
-      
-      broadcastToRoom(normalizedCode, {
-        type: 'CORRECT_GUESS',
-        payload: { 
-          player: username,
-          points: result.points, 
-          gameState: room.gameState 
+    if (result.success) {
+      if (result.correct) {
+        // Update room with new game state
+        room.gameState = result.gameState;
+        room.markModified('gameState');
+        await room.save();
+        
+        console.log(`✅ ${username} guessed correctly!`);
+        
+        // Broadcast correct guess to all players
+        broadcastToRoom(normalizedCode, {
+          type: 'CORRECT_GUESS',
+          payload: { 
+            player: username,
+            points: result.points, 
+            gameState: room.gameState 
+          }
+        });
+
+        // If all players guessed, end the round after a delay
+        if (result.allGuessed) {
+          console.log('🏁 All players guessed! Ending round...');
+          setTimeout(() => {
+            handleNextRound(ws, { roomCode: normalizedCode });
+          }, 3000);
         }
-      });
-
-      const allGuessed = room.gameState.players
-        .filter(p => p.username !== room.gameState.currentDrawer)
-        .every(p => p.hasGuessed);
-
-      if (allGuessed) {
-        setTimeout(() => {
-          handleNextRound(ws, { roomCode: normalizedCode });
-        }, 3000);
+      } else {
+        // Wrong guess - broadcast as chat message to all players who haven't guessed
+        console.log(`❌ ${username} guessed wrong: ${guess}`);
+        
+        const connections = roomConnections.get(normalizedCode);
+        if (connections) {
+          connections.forEach((playerName) => {
+            const playerData = room.gameState.players.find(p => p.username === playerName);
+            const isPlayerDrawer = playerName === room.gameState.currentDrawer;
+            const playerHasGuessed = playerData?.hasGuessed || false;
+            
+            // Show wrong guesses to everyone who hasn't guessed yet
+            const canSeeGuess = isPlayerDrawer || !playerHasGuessed || playerName === username;
+            
+            if (canSeeGuess) {
+              const client = clients.get(playerName);
+              if (client && client.ws.readyState === WebSocket.OPEN) {
+                client.ws.send(JSON.stringify({
+                  type: 'CHAT_MESSAGE',
+                  payload: { 
+                    username, 
+                    message: guess,
+                    isDrawer: false,
+                    hasGuessed: false
+                  }
+                }));
+              }
+            }
+          });
+        }
       }
     } else {
-      broadcastToRoom(normalizedCode, {
-        type: 'CHAT_MESSAGE',
-        payload: { username, message: guess }
-      });
+      console.log('⚠️ Guess handling failed:', result.message);
     }
   } catch (error) {
     console.error('❌ Error in handleGuessWord:', error);
@@ -731,7 +847,7 @@ async function handlePlayCard(ws, payload) {
       console.log('📊 AFTER PLAY:', {
         currentPlayer: room.gameState.currentPlayer,
         finishedPlayers: afterFinished,
-        remainingActive: remainingActive,
+        remainingActive: room.gameState.players.filter(p => !p.finished).length,
         totalPlayers: room.gameState.players.length,
         playerStates: room.gameState.players.map(p => ({ 
           name: p.name, 
@@ -998,23 +1114,7 @@ async function handleRequestHand(ws, payload) {
     ws.send(JSON.stringify({
       type: 'HAND_UPDATE',
       payload: {
-        hand: player.hand,
-        gameState: {
-          currentPlayer: room.gameState.currentPlayer,
-          currentPlayerIndex: room.gameState.currentPlayerIndex,
-          currentCard: room.gameState.currentCard,
-          currentColor: room.gameState.currentColor,
-          direction: room.gameState.direction,
-          drawCount: room.gameState.drawCount,
-          players: room.gameState.players.map(p => ({
-            name: p.name,
-            score: p.score,
-            cardCount: p.hand.length,
-            finished: p.finished,
-            position: p.position,
-            hand: []
-          }))
-        }
+        hand: player.hand
       }
     }));
   } catch (error) {

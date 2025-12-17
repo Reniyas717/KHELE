@@ -15,17 +15,19 @@ export default function ScribbleGame({ roomCode, username, players, initialGameS
   const listenersSetup = useRef(false);
 
   const isDrawer = gameState?.currentDrawer === username;
+  const currentPlayer = gameState?.players?.find(p => p.username === username);
+  const hasGuessed = currentPlayer?.hasGuessed || false;
   const currentWord = gameState?.currentWord || '';
   const wordToShow = isDrawer ? currentWord : (currentWord ? currentWord.replace(/./g, '_ ') : '');
 
   console.log('🎮 ScribbleGame render:', {
     username,
     isDrawer,
+    hasGuessed,
     currentDrawer: gameState?.currentDrawer,
     currentWord,
     roundStarted,
-    showWordChoices,
-    gameStateTimestamp: Date.now()
+    showWordChoices
   });
 
   // Setup WebSocket listeners
@@ -103,6 +105,11 @@ export default function ScribbleGame({ roomCode, username, players, initialGameS
         type: 'system',
         text: `Next round! ${payload.gameState.currentDrawer} is now drawing...`
       }]);
+      // Clear messages for new round
+      setMessages([{
+        type: 'system',
+        text: `Next round! ${payload.gameState.currentDrawer} is now drawing...`
+      }]);
     });
 
     const unsubGameOver = on('GAME_OVER', (data) => {
@@ -128,7 +135,9 @@ export default function ScribbleGame({ roomCode, username, players, initialGameS
       setMessages(prev => [...prev, {
         type: 'chat',
         username: payload.username,
-        text: payload.message
+        text: payload.message,
+        isDrawer: payload.isDrawer,
+        hasGuessed: payload.hasGuessed
       }]);
     });
 
@@ -168,15 +177,15 @@ export default function ScribbleGame({ roomCode, username, players, initialGameS
 
     console.log('💬 Sending message/guess:', message);
     
-    if (isDrawer) {
-      // Drawer can only chat
+    // If drawer or already guessed, send as chat message
+    if (isDrawer || hasGuessed) {
       sendMessage('SEND_MESSAGE', {
         roomCode,
         username,
         message
       });
     } else {
-      // Guesser submits guess
+      // Otherwise, it's a guess
       sendMessage('SUBMIT_GUESS', {
         roomCode,
         username,
@@ -224,13 +233,22 @@ export default function ScribbleGame({ roomCode, username, players, initialGameS
             Round {gameState?.round || 1} / {gameState?.maxRounds || 3}
           </p>
           {roundStarted ? (
-            <p className="text-lg font-raleway mt-2" style={{ color: colors.textSecondary }}>
-              {isDrawer ? (
-                <>🎨 You are drawing: <span className="font-bold text-2xl" style={{ color: colors.primary }}>{currentWord}</span></>
-              ) : (
-                <>👀 <span style={{ color: colors.primary }}>{gameState?.currentDrawer}</span> is drawing: <span className="font-bold text-xl tracking-wider" style={{ color: colors.secondary }}>{wordToShow}</span></>
+            <div>
+              <p className="text-lg font-raleway mt-2" style={{ color: colors.textSecondary }}>
+                {isDrawer ? (
+                  <>🎨 You are drawing: <span className="font-bold text-2xl" style={{ color: colors.primary }}>{currentWord}</span></>
+                ) : hasGuessed ? (
+                  <>✅ You guessed it! The word is: <span className="font-bold text-2xl" style={{ color: colors.primary }}>{currentWord}</span></>
+                ) : (
+                  <>👀 <span style={{ color: colors.primary }}>{gameState?.currentDrawer}</span> is drawing: <span className="font-bold text-xl tracking-wider" style={{ color: colors.secondary }}>{wordToShow}</span></>
+                )}
+              </p>
+              {!isDrawer && !hasGuessed && (
+                <p className="text-sm mt-1" style={{ color: colors.textSecondary }}>
+                  💡 Type your guess in the chat below
+                </p>
               )}
-            </p>
+            </div>
           ) : (
             <p className="text-lg font-raleway mt-2 animate-pulse" style={{ color: colors.secondary }}>
               ⏳ Waiting for {gameState?.currentDrawer} to choose a word...
@@ -246,7 +264,7 @@ export default function ScribbleGame({ roomCode, username, players, initialGameS
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             {gameState?.players?.map((player, index) => {
               const isCurrentDrawer = player.username === gameState.currentDrawer;
-              const hasGuessed = player.hasGuessed;
+              const hasGuessedPlayer = player.hasGuessed;
               
               return (
                 <div
@@ -255,12 +273,12 @@ export default function ScribbleGame({ roomCode, username, players, initialGameS
                   style={{
                     background: isCurrentDrawer
                       ? `${colors.primary}20`
-                      : hasGuessed
+                      : hasGuessedPlayer
                       ? `${colors.secondary}20`
                       : 'rgba(0, 0, 0, 0.3)',
                     borderColor: isCurrentDrawer
                       ? colors.primary
-                      : hasGuessed
+                      : hasGuessedPlayer
                       ? colors.secondary
                       : `${colors.primary}30`,
                     boxShadow: isCurrentDrawer ? `0 0 20px ${colors.primary}40` : 'none'
@@ -269,7 +287,7 @@ export default function ScribbleGame({ roomCode, username, players, initialGameS
                   <p className="font-raleway font-bold" style={{ color: colors.text }}>
                     {player.username} {player.username === username && '(You)'}
                     {isCurrentDrawer && ' 🎨'}
-                    {hasGuessed && !isCurrentDrawer && ' ✅'}
+                    {hasGuessedPlayer && !isCurrentDrawer && ' ✅'}
                   </p>
                   <p className="text-sm" style={{ color: colors.textSecondary }}>
                     Score: {player.score || 0}
@@ -326,8 +344,21 @@ export default function ScribbleGame({ roomCode, username, players, initialGameS
               }}
             >
               <h2 className="text-xl font-orbitron font-bold mb-4" style={{ color: colors.text }}>
-                Chat
+                {isDrawer ? 'Chat' : hasGuessed ? 'Chat (You guessed!)' : 'Chat & Guess'}
               </h2>
+
+              {/* Info about chat visibility */}
+              {!isDrawer && !hasGuessed && roundStarted && (
+                <div 
+                  className="mb-3 p-2 rounded text-xs text-center"
+                  style={{ 
+                    background: 'rgba(139, 92, 246, 0.1)',
+                    color: colors.secondary
+                  }}
+                >
+                  💡 Chat is visible only to those who guessed correctly
+                </div>
+              )}
 
               {/* Messages */}
               <div 
@@ -356,8 +387,13 @@ export default function ScribbleGame({ roomCode, username, players, initialGameS
                         </p>
                       ) : (
                         <p className="text-sm">
-                          <span className="font-bold" style={{ color: colors.primary }}>
-                            {msg.username}:
+                          <span 
+                            className="font-bold" 
+                            style={{ 
+                              color: msg.isDrawer ? colors.primary : msg.hasGuessed ? colors.secondary : colors.primary 
+                            }}
+                          >
+                            {msg.username}{msg.isDrawer ? ' 🎨' : msg.hasGuessed ? ' ✅' : ''}:
                           </span>{' '}
                           <span style={{ color: colors.text }}>{msg.text}</span>
                         </p>
@@ -378,6 +414,8 @@ export default function ScribbleGame({ roomCode, username, players, initialGameS
                       ? "Wait for round to start..." 
                       : isDrawer 
                       ? "Type a message..." 
+                      : hasGuessed
+                      ? "Type a message..."
                       : "Type your guess..."
                   }
                   disabled={!roundStarted}
@@ -400,7 +438,7 @@ export default function ScribbleGame({ roomCode, username, players, initialGameS
                     color: '#fff'
                   }}
                 >
-                  Send
+                  {isDrawer || hasGuessed ? 'Send' : 'Guess'}
                 </button>
               </form>
             </div>

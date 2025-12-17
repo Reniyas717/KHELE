@@ -48,70 +48,116 @@ function initScribbleGame(players) {
   return gameState;
 }
 
+function selectWord(gameState, word) {
+  console.log('📝 selectWord called:', { word, currentDrawer: gameState.currentDrawer });
+  
+  if (!gameState.wordOptions || !gameState.wordOptions.includes(word)) {
+    console.error('❌ Invalid word selection:', word);
+    return gameState;
+  }
+
+  // Set the word
+  gameState.currentWord = word;
+  gameState.wordOptions = []; // Clear options after selection
+  gameState.roundActive = true;
+  
+  // Reset hasGuessed for all players except drawer
+  gameState.players.forEach(player => {
+    player.hasGuessed = player.username === gameState.currentDrawer;
+  });
+  
+  console.log('✅ Word set successfully:', {
+    currentWord: gameState.currentWord,
+    roundActive: gameState.roundActive
+  });
+  
+  return gameState;
+}
+
 function handleGuess(gameState, username, guess) {
-  console.log('🔍 Processing guess:', { username, guess, currentWord: gameState.currentWord });
+  console.log('🔍 Processing guess:', { 
+    username, 
+    guess, 
+    currentWord: gameState.currentWord,
+    roundActive: gameState.roundActive
+  });
 
-  // Don't let drawer guess
+  // Check if game state is valid
+  if (!gameState.currentWord) {
+    console.error('❌ No current word set in game state');
+    return { success: false, correct: false, message: 'No word to guess' };
+  }
+
+  if (!gameState.roundActive) {
+    console.error('❌ Round is not active');
+    return { success: false, correct: false, message: 'Round not active' };
+  }
+
+  // Find the player
   const player = gameState.players.find(p => p.username === username);
+  
   if (!player) {
-    console.log('❌ Player not found');
-    return { correct: false };
+    console.error('❌ Player not found:', username);
+    return { success: false, correct: false, message: 'Player not found' };
   }
 
+  // Check if player is the drawer
   if (username === gameState.currentDrawer) {
-    console.log('❌ Drawer cannot guess');
-    return { correct: false, message: 'You cannot guess your own drawing!' };
+    console.log('⚠️ Drawer cannot guess');
+    return { success: false, correct: false, message: 'Drawer cannot guess' };
   }
 
-  // Check if already guessed
+  // Check if player has already guessed
   if (player.hasGuessed) {
-    console.log('❌ Player already guessed');
-    return { correct: false, message: 'You already guessed!' };
+    console.log('⚠️ Player already guessed:', username);
+    return { success: false, correct: false, message: 'Already guessed' };
   }
 
   // Check if guess is correct (case insensitive)
   const isCorrect = guess.toLowerCase().trim() === gameState.currentWord.toLowerCase().trim();
   
+  console.log('🎯 Guess comparison:', {
+    guess: guess.toLowerCase().trim(),
+    currentWord: gameState.currentWord.toLowerCase().trim(),
+    isCorrect
+  });
+
   if (isCorrect) {
-    console.log('✅ Correct guess!');
-    
-    // Calculate points based on how many have guessed
-    const guessedCount = gameState.players.filter(p => p.hasGuessed).length;
-    const basePoints = 100;
-    const points = Math.max(basePoints - (guessedCount * 20), 20); // First: 100, Second: 80, Third: 60, etc., min 20
-    
-    // Award points to guesser
-    player.score += points;
+    // Mark player as having guessed
     player.hasGuessed = true;
-
-    // Award points to drawer (50 points per correct guess)
-    const drawer = gameState.players.find(p => p.username === gameState.currentDrawer);
-    if (drawer) {
-      drawer.score += 50;
-    }
-
-    // Check if everyone guessed
-    const nonDrawerPlayers = gameState.players.filter(p => p.username !== gameState.currentDrawer);
-    const allGuessed = nonDrawerPlayers.every(p => p.hasGuessed);
+    
+    // Award points (more points for guessing earlier)
+    const playersWhoGuessed = gameState.players.filter(p => p.hasGuessed && p.username !== gameState.currentDrawer).length;
+    const points = Math.max(100 - (playersWhoGuessed - 1) * 20, 20);
+    player.score += points;
+    
+    console.log(`✅ Correct guess! ${username} earned ${points} points`);
+    
+    // Check if all players have guessed
+    const allGuessed = gameState.players
+      .filter(p => p.username !== gameState.currentDrawer)
+      .every(p => p.hasGuessed);
     
     if (allGuessed) {
-      gameState.allGuessed = true;
-      console.log('🎉 Everyone guessed!');
+      console.log('🎉 All players have guessed!');
+      gameState.roundActive = false;
     }
-
-    return { 
-      correct: true, 
-      points, 
-      allGuessed,
-      gameState 
+    
+    return {
+      success: true,
+      correct: true,
+      points,
+      gameState,
+      allGuessed
+    };
+  } else {
+    console.log('❌ Wrong guess');
+    return {
+      success: true,
+      correct: false,
+      gameState
     };
   }
-
-  console.log('❌ Incorrect guess');
-  return { 
-    correct: false, 
-    message: guess // Send back the guess for chat display
-  };
 }
 
 function nextRound(gameState) {
@@ -153,14 +199,6 @@ function nextRound(gameState) {
   gameState.wordOptions = getRandomWords(3);
   
   return { gameState };
-}
-
-function selectWord(gameState, word) {
-  console.log('📝 Word selected:', word);
-  gameState.currentWord = word;
-  gameState.drawingStarted = true;
-  gameState.wordOptions = [];
-  return gameState;
 }
 
 module.exports = {
