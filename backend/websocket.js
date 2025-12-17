@@ -460,6 +460,8 @@ async function handleStartGame(ws, payload) {
   }
 }
 
+// Update the handlePlayCard function to check game state after every play
+
 async function handlePlayCard(ws, payload) {
   try {
     const { roomCode, username, cardIndex, chosenColor } = payload;
@@ -478,12 +480,67 @@ async function handlePlayCard(ws, payload) {
       return;
     }
 
-    console.log('📊 Before play - Current player:', room.gameState.currentPlayer);
+    // Log current state before play
+    const beforeFinished = room.gameState.players.filter(p => p.finished).length;
+    console.log('📊 BEFORE PLAY:', {
+      currentPlayer: room.gameState.currentPlayer,
+      finishedPlayers: beforeFinished,
+      totalPlayers: room.gameState.players.length,
+      playerStates: room.gameState.players.map(p => ({ 
+        name: p.name, 
+        cards: p.hand?.length || 0, 
+        finished: p.finished 
+      }))
+    });
 
     const result = playCard(room.gameState, username, cardIndex, chosenColor);
     
     if (result.success) {
       room.gameState = result.gameState;
+      
+      // Log current state after play
+      const afterFinished = room.gameState.players.filter(p => p.finished).length;
+      const remainingActive = room.gameState.players.filter(p => !p.finished).length;
+      
+      console.log('📊 AFTER PLAY:', {
+        currentPlayer: room.gameState.currentPlayer,
+        finishedPlayers: afterFinished,
+        remainingActive: remainingActive,
+        totalPlayers: room.gameState.players.length,
+        playerStates: room.gameState.players.map(p => ({ 
+          name: p.name, 
+          cards: p.hand?.length || 0, 
+          finished: p.finished 
+        }))
+      });
+      
+      // CHECK IF GAME SHOULD END (n-1 players finished)
+      if (remainingActive <= 1 && !result.gameOver) {
+        console.log('🚨 FORCE GAME OVER - Only 1 or 0 players remaining!');
+        
+        // Assign last position to remaining players
+        room.gameState.players.forEach(p => {
+          if (!p.finished) {
+            p.finished = true;
+            p.position = room.gameState.players.length;
+            console.log(`🏅 Force finishing ${p.name} at position ${p.position}`);
+          }
+        });
+        
+        // Create rankings
+        const rankings = room.gameState.players
+          .sort((a, b) => a.position - b.position)
+          .map(p => ({
+            name: p.name,
+            position: p.position,
+            points: p.score
+          }));
+        
+        result.gameOver = true;
+        result.rankings = rankings;
+        
+        console.log('🏆 FORCED RANKINGS:', rankings);
+      }
       
       // Update player hands in room.players array
       room.gameState.players.forEach((gamePlayer) => {
@@ -522,7 +579,7 @@ async function handlePlayCard(ws, payload) {
       });
       
       // Handle auto-draw
-      if (result.autoDrawn) {
+      if (result.autoDrawn && !result.gameOver) {
         setTimeout(() => {
           broadcastToRoom(normalizedCode, {
             type: 'AUTO_DRAWN',
@@ -537,6 +594,7 @@ async function handlePlayCard(ws, payload) {
       
       // Handle player finished (not game over yet)
       if (result.playerFinished && !result.gameOver) {
+        console.log(`🎯 Player finished but game continues: ${result.playerFinished}`);
         broadcastToRoom(normalizedCode, {
           type: 'PLAYER_FINISHED',
           payload: {
@@ -550,6 +608,9 @@ async function handlePlayCard(ws, payload) {
       
       // Handle game over
       if (result.gameOver) {
+        console.log('🏁 GAME OVER! Broadcasting final rankings...');
+        console.log('🏆 Rankings:', result.rankings);
+        
         setTimeout(() => {
           broadcastToRoom(normalizedCode, {
             type: 'GAME_OVER',
@@ -564,6 +625,7 @@ async function handlePlayCard(ws, payload) {
           
           room.status = 'finished';
           room.save();
+          console.log('✅ Game over broadcast sent and room marked as finished');
         }, 1000);
       }
     } else {

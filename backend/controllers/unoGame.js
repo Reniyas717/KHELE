@@ -129,12 +129,12 @@ function hasStackableCard(player, lastCard) {
       return true;
     }
     
-    // Can stack +4 on +2
+    // Can stack +4 on +2 (but NOT +2 on +4)
     if (lastCard.type === 'draw_two' && card.type === 'wild_draw_four') {
       return true;
     }
     
-    // Can stack +2 on +2
+    // Can stack +2 on +2 (ONLY if last card was +2)
     if (lastCard.type === 'draw_two' && card.type === 'draw_two') {
       return true;
     }
@@ -145,26 +145,32 @@ function hasStackableCard(player, lastCard) {
 
 // Check if a card can be played
 function canPlayCard(card, currentCard, currentColor, gameState) {
-  // If there's a draw count pending, only draw cards can be played (stacking)
+  // If there's a draw count pending, ONLY stackable draw cards can be played
   if (gameState.drawCount > 0) {
     const lastCard = gameState.currentCard;
     
-    // Can stack +4 on +4
-    if (lastCard.type === 'wild_draw_four' && card.type === 'wild_draw_four') {
-      console.log('✅ Stacking +4 on +4');
-      return true;
+    // Can ONLY stack +4 on +4
+    if (lastCard.type === 'wild_draw_four') {
+      if (card.type === 'wild_draw_four') {
+        console.log('✅ Stacking +4 on +4');
+        return true;
+      }
+      console.log('❌ Cannot stack - only +4 can be stacked on +4');
+      return false;
     }
     
-    // Can stack +4 on +2
-    if (lastCard.type === 'draw_two' && card.type === 'wild_draw_four') {
-      console.log('✅ Stacking +4 on +2');
-      return true;
-    }
-    
-    // Can stack +2 on +2 (same color or any +2)
-    if (lastCard.type === 'draw_two' && card.type === 'draw_two') {
-      console.log('✅ Stacking +2 on +2');
-      return true;
+    // Can stack +4 OR +2 on +2
+    if (lastCard.type === 'draw_two') {
+      if (card.type === 'wild_draw_four') {
+        console.log('✅ Stacking +4 on +2');
+        return true;
+      }
+      if (card.type === 'draw_two') {
+        console.log('✅ Stacking +2 on +2');
+        return true;
+      }
+      console.log('❌ Cannot stack - only +4 or +2 can be stacked on +2');
+      return false;
     }
     
     // Cannot play other cards when draw is pending
@@ -172,7 +178,7 @@ function canPlayCard(card, currentCard, currentColor, gameState) {
     return false;
   }
   
-  // Wild cards can always be played
+  // Wild cards can always be played (when no draw penalty)
   if (card.type === 'wild' || card.type === 'wild_draw_four') {
     return true;
   }
@@ -201,7 +207,7 @@ function playCard(gameState, playerName, cardIndex, chosenColor = null) {
   console.log('📊 Current game state:', {
     currentPlayer: gameState.currentPlayer,
     currentPlayerIndex: gameState.currentPlayerIndex,
-    players: gameState.players.map(p => ({ name: p.name, finished: p.finished })),
+    players: gameState.players.map(p => ({ name: p.name, finished: p.finished, cards: p.hand.length })),
     drawCount: gameState.drawCount
   });
   
@@ -251,7 +257,7 @@ function playCard(gameState, playerName, cardIndex, chosenColor = null) {
     
     // If draw count is pending, they must draw
     if (gameState.drawCount > 0) {
-      return { success: false, message: `You must draw ${gameState.drawCount} cards or stack another draw card!` };
+      return { success: false, message: `You must draw ${gameState.drawCount} cards! No stackable cards available.` };
     }
     
     return { success: false, message: 'Card cannot be played - does not match color or value' };
@@ -336,19 +342,24 @@ function playCard(gameState, playerName, cardIndex, chosenColor = null) {
     player.position = finishedCount;
     
     console.log(`✅ ${playerName} finished in position #${finishedCount} with ${points} points`);
+    console.log(`📊 Finished players: ${finishedCount}/${gameState.players.length}`);
     
     // Count remaining active players
     const remainingPlayers = gameState.players.filter(p => !p.finished);
     const totalPlayers = gameState.players.length;
     
-    // Game is over when (n-1) players have finished (only 1 player remains)
-    if (finishedCount >= totalPlayers - 1) {
-      console.log('🏁 Game Over - (n-1) players finished');
+    console.log(`🔍 Checking game over: ${finishedCount} finished out of ${totalPlayers} total`);
+    console.log(`🔍 Remaining active players: ${remainingPlayers.length}`);
+    
+    // Game is over when (n-1) players have finished (only 1 or 0 players remain)
+    if (remainingPlayers.length <= 1) {
+      console.log('🏁 Game Over - only 1 or 0 players remaining!');
       
       // Assign last position to remaining player(s)
       remainingPlayers.forEach(p => {
         p.finished = true;
         p.position = totalPlayers;
+        console.log(`🏅 Assigning last position to ${p.name}: #${p.position}`);
       });
       
       // Create rankings
@@ -359,6 +370,8 @@ function playCard(gameState, playerName, cardIndex, chosenColor = null) {
           position: p.position,
           points: p.score
         }));
+      
+      console.log('🏆 Final rankings:', rankings);
       
       return {
         success: true,
@@ -371,10 +384,14 @@ function playCard(gameState, playerName, cardIndex, chosenColor = null) {
       };
     }
     
+    console.log(`⏭️ Game continues - ${remainingPlayers.length} players still playing`);
+    
     // Move to next active player
     const nextPlayerIndex = getNextActivePlayerIndex(gameState, skipNext ? 2 : 1);
     gameState.currentPlayerIndex = nextPlayerIndex;
     gameState.currentPlayer = gameState.players[nextPlayerIndex].name;
+    
+    console.log(`➡️ Next player: ${gameState.currentPlayer}`);
     
     return {
       success: true,
@@ -398,6 +415,18 @@ function playCard(gameState, playerName, cardIndex, chosenColor = null) {
   // AUTO-DRAW: If next player has draw penalty and can't stack, auto-draw for them
   if (gameState.drawCount > 0) {
     const nextPlayer = gameState.players[nextPlayerIndex];
+    
+    // Skip if next player has already finished
+    if (nextPlayer.finished) {
+      console.log(`⏭️ Next player ${nextPlayer.name} already finished, skipping auto-draw`);
+      gameState.drawCount = 0;
+      
+      const afterFinishedIndex = getNextActivePlayerIndex(gameState, 1);
+      gameState.currentPlayerIndex = afterFinishedIndex;
+      gameState.currentPlayer = gameState.players[afterFinishedIndex].name;
+      
+      return { success: true, gameState };
+    }
     
     if (!hasStackableCard(nextPlayer, gameState.currentCard)) {
       console.log(`🎴 AUTO-DRAW: ${nextPlayer.name} has no stackable cards, auto-drawing ${gameState.drawCount} cards`);
@@ -438,15 +467,28 @@ function playCard(gameState, playerName, cardIndex, chosenColor = null) {
   return { success: true, gameState };
 }
 
+// Update getNextActivePlayerIndex with better safety
+
 // Get next ACTIVE player index (skip finished players)
 function getNextActivePlayerIndex(gameState, steps = 1) {
   const { players, currentPlayerIndex, direction } = gameState;
   const totalPlayers = players.length;
   
+  // Count active players
+  const activePlayers = players.filter(p => !p.finished);
+  
+  console.log(`🔍 Finding next active player. Active: ${activePlayers.length}/${totalPlayers}`);
+  
+  // If only 0 or 1 active players remain, game should be over
+  if (activePlayers.length <= 1) {
+    console.log('⚠️ Game should be over - 1 or 0 active players!');
+    return currentPlayerIndex; // Return current, game should end
+  }
+  
   let nextIndex = currentPlayerIndex;
   let stepsRemaining = steps;
   let safetyCounter = 0;
-  const maxIterations = totalPlayers * steps * 2;
+  const maxIterations = totalPlayers * steps * 3; // Increased safety limit
   
   while (stepsRemaining > 0 && safetyCounter < maxIterations) {
     nextIndex = (nextIndex + direction + totalPlayers) % totalPlayers;
@@ -460,9 +502,10 @@ function getNextActivePlayerIndex(gameState, steps = 1) {
   
   if (safetyCounter >= maxIterations) {
     console.error('⚠️ Safety limit reached in getNextActivePlayerIndex');
+    console.error('   This might indicate all players are finished!');
   }
   
-  console.log(`🔄 Next active player index: ${nextIndex} (${players[nextIndex].name})`);
+  console.log(`🔄 Next active player: ${nextIndex} (${players[nextIndex].name}), Finished: ${players[nextIndex].finished}`);
   
   return nextIndex;
 }

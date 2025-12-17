@@ -45,6 +45,42 @@ export default function UNOGame({ roomCode, username, players, initialGameState,
     }
   }, [isConnected, roomCode, username]);
 
+  // Watch for game over condition
+  useEffect(() => {
+    if (!gameState?.players) return;
+    
+    const activePlayers = gameState.players.filter(p => !p.finished);
+    const finishedCount = gameState.players.filter(p => p.finished).length;
+    
+    console.log('🔍 Game state check:', {
+      totalPlayers: gameState.players.length,
+      finishedCount,
+      activePlayers: activePlayers.length,
+      shouldGameBeOver: activePlayers.length <= 1
+    });
+    
+    // If game should be over but modal not showing, trigger it
+    if (activePlayers.length <= 1 && finishedCount >= gameState.players.length - 1 && !showGameOver) {
+      console.log('🚨 Forcing game over modal to show!');
+      
+      const rankings = gameState.players
+        .sort((a, b) => (a.position || 999) - (b.position || 999))
+        .map(p => ({
+          name: p.name,
+          position: p.position || gameState.players.length,
+          points: p.score || 0
+        }));
+      
+      setTimeout(() => {
+        setGameOverData({
+          rankings,
+          finalScores: rankings.map(r => ({ name: r.name, points: r.points }))
+        });
+        setShowGameOver(true);
+      }, 1500);
+    }
+  }, [gameState?.players, showGameOver]);
+
   // Setup WebSocket listeners
   useEffect(() => {
     if (!isConnected || listenersSetup.current) return;
@@ -182,6 +218,7 @@ export default function UNOGame({ roomCode, username, players, initialGameState,
 
   const handlePlayCard = (cardIndex) => {
     if (iHaveFinished) {
+      console.log('❌ Cannot play - player has finished');
       alert('You have already finished this game! Wait for others to complete.');
       return;
     }
@@ -195,7 +232,13 @@ export default function UNOGame({ roomCode, username, players, initialGameState,
 
     // Check if it's the player's turn
     const currentPlayer = gameState?.currentPlayer;
-    console.log('🎯 Checking turn:', { currentPlayer, username, isMyTurn: currentPlayer === username });
+    console.log('🎯 Checking turn:', { 
+      currentPlayer, 
+      username, 
+      isMyTurn: currentPlayer === username,
+      iHaveFinished,
+      myPlayerState: myPlayer
+    });
     
     if (currentPlayer !== username) {
       console.log('❌ Not your turn! Current player:', currentPlayer);
@@ -206,7 +249,12 @@ export default function UNOGame({ roomCode, username, players, initialGameState,
     // Check if card can be played
     if (!canPlayCard(card)) {
       console.log('❌ Cannot play this card');
-      alert("You can't play this card! It doesn't match color or number.");
+      
+      if (gameState?.drawCount > 0) {
+        alert(`Cannot play this card! You must draw ${gameState.drawCount} cards or stack a valid draw card.`);
+      } else {
+        alert("You can't play this card! It doesn't match color or number.");
+      }
       return;
     }
 
@@ -246,13 +294,19 @@ export default function UNOGame({ roomCode, username, players, initialGameState,
 
   const handleDrawCard = () => {
     if (iHaveFinished) {
+      console.log('❌ Cannot draw - player has finished');
       alert('You have already finished this game! Wait for others to complete.');
       return;
     }
 
     // Check if it's the player's turn
     const currentPlayer = gameState?.currentPlayer;
-    console.log('🎯 Checking turn for draw:', { currentPlayer, username });
+    console.log('🎯 Checking turn for draw:', { 
+      currentPlayer, 
+      username, 
+      iHaveFinished,
+      myPlayerState: myPlayer 
+    });
     
     if (currentPlayer !== username) {
       console.log('❌ Not your turn to draw!');
@@ -291,21 +345,43 @@ export default function UNOGame({ roomCode, username, players, initialGameState,
     console.log('🔍 Checking playability:', { 
       card, 
       currentCard: current, 
-      currentColor 
+      currentColor,
+      drawCount: gameState.drawCount
     });
     
-    // If draw count is pending, only draw cards can be played
+    // If draw count is pending, ONLY stackable cards can be played
     if (gameState.drawCount > 0) {
-      if (current.type === 'wild_draw_four' && card.type === 'wild_draw_four') {
-        return true;
+      console.log('⚠️ Draw penalty active - checking stacking rules');
+      
+      // Can ONLY stack +4 on +4
+      if (current.type === 'wild_draw_four') {
+        if (card.type === 'wild_draw_four') {
+          console.log('✅ Can stack +4 on +4');
+          return true;
+        }
+        console.log('❌ Cannot stack - only +4 can be stacked on +4');
+        return false;
       }
-      if (current.type === 'draw_two' && (card.type === 'wild_draw_four' || card.type === 'draw_two')) {
-        return true;
+      
+      // Can stack +4 OR +2 on +2
+      if (current.type === 'draw_two') {
+        if (card.type === 'wild_draw_four') {
+          console.log('✅ Can stack +4 on +2');
+          return true;
+        }
+        if (card.type === 'draw_two') {
+          console.log('✅ Can stack +2 on +2');
+          return true;
+        }
+        console.log('❌ Cannot stack - only +4 or +2 can be stacked on +2');
+        return false;
       }
+      
+      console.log('❌ Draw penalty active - no valid stack');
       return false;
     }
     
-    // Wild cards can always be played
+    // Wild cards can always be played (when no draw penalty)
     if (card.type === 'wild' || card.type === 'wild_draw_four') {
       console.log('✅ Wild card - can play');
       return true;
