@@ -6,6 +6,7 @@ export default function Canvas({ roomCode, canDraw = true, onClear }) {
   const [isDrawing, setIsDrawing] = useState(false);
   const [color, setColor] = useState('#000000');
   const [lineWidth, setLineWidth] = useState(5);
+  const [lastPos, setLastPos] = useState({ x: 0, y: 0 });
   const { sendMessage, on } = useWebSocket();
 
   useEffect(() => {
@@ -21,7 +22,7 @@ export default function Canvas({ roomCode, canDraw = true, onClear }) {
       const { drawData } = data.payload;
       if (!drawData) return;
 
-      console.log('🎨 Received draw data from other player:', drawData);
+      console.log('🎨 Received draw data from other player');
 
       ctx.strokeStyle = drawData.color;
       ctx.lineWidth = drawData.lineWidth;
@@ -30,6 +31,7 @@ export default function Canvas({ roomCode, canDraw = true, onClear }) {
       ctx.moveTo(drawData.x0, drawData.y0);
       ctx.lineTo(drawData.x1, drawData.y1);
       ctx.stroke();
+      ctx.closePath();
     });
 
     // Listen for canvas clear
@@ -44,55 +46,68 @@ export default function Canvas({ roomCode, canDraw = true, onClear }) {
     };
   }, [on]);
 
-  const startDrawing = (e) => {
-    if (!canDraw) return;
-    setIsDrawing(true);
-
+  const getMousePos = (e) => {
     const canvas = canvasRef.current;
     const rect = canvas.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
+    const scaleX = canvas.width / rect.width;
+    const scaleY = canvas.height / rect.height;
+    
+    return {
+      x: (e.clientX - rect.left) * scaleX,
+      y: (e.clientY - rect.top) * scaleY
+    };
+  };
 
+  const startDrawing = (e) => {
+    if (!canDraw) return;
+    
+    const pos = getMousePos(e);
+    setIsDrawing(true);
+    setLastPos(pos);
+
+    const canvas = canvasRef.current;
     const ctx = canvas.getContext('2d');
     ctx.strokeStyle = color;
     ctx.lineWidth = lineWidth;
     ctx.beginPath();
-    ctx.moveTo(x, y);
+    ctx.moveTo(pos.x, pos.y);
   };
 
   const draw = (e) => {
     if (!isDrawing || !canDraw) return;
 
+    const pos = getMousePos(e);
     const canvas = canvasRef.current;
-    const rect = canvas.getBoundingClientRect();
-    const x1 = e.clientX - rect.left;
-    const y1 = e.clientY - rect.top;
-
     const ctx = canvas.getContext('2d');
-    const x0 = ctx.getImageData(0, 0, 1, 1); // Get last position
 
-    ctx.lineTo(x1, y1);
+    // Draw locally
+    ctx.lineTo(pos.x, pos.y);
     ctx.stroke();
 
-    // Broadcast drawing to other players
-    const prevX = e.clientX - e.movementX - rect.left;
-    const prevY = e.clientY - e.movementY - rect.top;
-
+    // Broadcast to other players
     sendMessage('CANVAS_DRAW', {
       roomCode,
       drawData: {
-        x0: prevX,
-        y0: prevY,
-        x1,
-        y1,
+        x0: lastPos.x,
+        y0: lastPos.y,
+        x1: pos.x,
+        y1: pos.y,
         color,
         lineWidth
       }
     });
+
+    setLastPos(pos);
   };
 
   const stopDrawing = () => {
+    if (!isDrawing) return;
+    
     setIsDrawing(false);
+    
+    const canvas = canvasRef.current;
+    const ctx = canvas.getContext('2d');
+    ctx.closePath();
   };
 
   const clearCanvas = () => {
@@ -111,17 +126,17 @@ export default function Canvas({ roomCode, canDraw = true, onClear }) {
       {/* Drawing Tools - Only show for drawer */}
       {canDraw && (
         <div className="flex gap-4 items-center bg-gray-800 p-4 rounded-lg">
-          <div className="flex gap-2">
+          <div className="flex gap-2 items-center">
             <label className="text-white text-sm">Color:</label>
             <input
               type="color"
               value={color}
               onChange={(e) => setColor(e.target.value)}
-              className="w-12 h-8 cursor-pointer"
+              className="w-12 h-8 cursor-pointer rounded"
             />
           </div>
 
-          <div className="flex gap-2">
+          <div className="flex gap-2 items-center">
             <label className="text-white text-sm">Size:</label>
             <input
               type="range"
@@ -136,9 +151,9 @@ export default function Canvas({ roomCode, canDraw = true, onClear }) {
 
           <button
             onClick={clearCanvas}
-            className="px-4 py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg transition"
+            className="px-4 py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg transition font-bold"
           >
-            Clear
+            🗑️ Clear
           </button>
         </div>
       )}
@@ -148,7 +163,7 @@ export default function Canvas({ roomCode, canDraw = true, onClear }) {
         ref={canvasRef}
         width={800}
         height={600}
-        className="border-4 border-gray-700 rounded-lg bg-white cursor-crosshair"
+        className="border-4 border-gray-700 rounded-lg bg-white"
         style={{ 
           cursor: canDraw ? 'crosshair' : 'not-allowed',
           touchAction: 'none'
