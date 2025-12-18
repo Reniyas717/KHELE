@@ -7,6 +7,9 @@ const { initUNOGame, playCard, drawCard } = require('./controllers/unoGame');
 const clients = new Map(); // username -> { ws, roomCode }
 const roomConnections = new Map(); // roomCode -> Set of usernames
 
+// Store active timers
+const roundTimers = new Map(); // roomCode -> timer reference
+
 function initWebSocket(server) {
   const wss = new WebSocket.Server({ 
     server,
@@ -266,20 +269,35 @@ async function handleLeaveRoom(ws, payload) {
     
     console.log(`👋 LEAVE_ROOM: ${username} from ${normalizedCode}`);
 
-    const users = roomConnections.get(normalizedCode);
-    if (users) {
-      users.delete(username);
-      if (users.size === 0) {
-        roomConnections.delete(normalizedCode);
-      }
-    }
-    clients.delete(username);
-
+    // Clear timer if host leaves
     const room = await GameRoom.findOne({ 
       roomCode: normalizedCode,
       isActive: true 
     });
     
+    if (room && room.host === username) {
+      if (roundTimers.has(normalizedCode)) {
+        clearTimeout(roundTimers.get(normalizedCode));
+        roundTimers.delete(normalizedCode);
+        console.log('⏱️ Timer cleared - host left');
+      }
+    }
+
+    const users = roomConnections.get(normalizedCode);
+    if (users) {
+      users.delete(username);
+      if (users.size === 0) {
+        roomConnections.delete(normalizedCode);
+        // Clear timer if room is empty
+        if (roundTimers.has(normalizedCode)) {
+          clearTimeout(roundTimers.get(normalizedCode));
+          roundTimers.delete(normalizedCode);
+          console.log('⏱️ Timer cleared - room empty');
+        }
+      }
+    }
+    clients.delete(username);
+
     if (!room) {
       console.log('⚠️ Room not found or already inactive');
       return;
@@ -607,7 +625,8 @@ async function handleSelectWord(ws, payload) {
     console.log('🔍 After selectWord:', {
       currentWord: room.gameState.currentWord,
       roundActive: room.gameState.roundActive,
-      wordOptions: room.gameState.wordOptions
+      wordOptions: room.gameState.wordOptions,
+      roundTimer: room.gameState.roundTimer
     });
 
     // Mark the field as modified and save
@@ -625,7 +644,10 @@ async function handleSelectWord(ws, payload) {
     if (drawerClient && drawerClient.ws.readyState === WebSocket.OPEN) {
       drawerClient.ws.send(JSON.stringify({
         type: 'ROUND_START',
-        payload: { gameState: room.gameState }
+        payload: { 
+          gameState: room.gameState,
+          timeLimit: room.gameState.roundTimer
+        }
       }));
       console.log(`✅ Sent ROUND_START to drawer: ${username}`);
     }
@@ -644,13 +666,47 @@ async function handleSelectWord(ws, payload) {
           if (client && client.ws.readyState === WebSocket.OPEN) {
             client.ws.send(JSON.stringify({
               type: 'ROUND_START',
-              payload: { gameState: guesserGameState }
+              payload: { 
+                gameState: guesserGameState,
+                timeLimit: room.gameState.roundTimer
+              }
             }));
             console.log(`✅ Sent ROUND_START to guesser: ${playerName}`);
           }
         }
       });
     }
+
+    // Clear any existing timer for this room
+    if (roundTimers.has(normalizedCode)) {
+      clearTimeout(roundTimers.get(normalizedCode));
+      console.log('⏱️ Cleared existing timer');
+    }
+
+    // Start round timer
+    const timerDuration = room.gameState.roundTimer * 1000; // Convert to milliseconds
+    console.log(`⏱️ Starting ${room.gameState.roundTimer}s timer for round`);
+    
+    const timer = setTimeout(async () => {
+      console.log('⏰ Time\'s up! Ending round...');
+      
+      // Broadcast time up message
+      broadcastToRoom(normalizedCode, {
+        type: 'TIME_UP',
+        payload: { 
+          word: room.gameState.currentWord,
+          message: `Time's up! The word was: ${room.gameState.currentWord}`
+        }
+      });
+      
+      // Wait a moment then move to next round
+      setTimeout(async () => {
+        await handleNextRound(ws, { roomCode: normalizedCode });
+        roundTimers.delete(normalizedCode);
+      }, 3000);
+    }, timerDuration);
+    
+    roundTimers.set(normalizedCode, timer);
 
     console.log(`✅ Word selected and broadcasted: ${word}`);
   } catch (error) {
@@ -708,11 +764,29 @@ async function handleGuessWord(ws, payload) {
           }
         });
 
-        // If all players guessed, end the round after a delay
+        // If all players guessed, clear timer and end the round
         if (result.allGuessed) {
           console.log('🏁 All players guessed! Ending round...');
-          setTimeout(() => {
-            handleNextRound(ws, { roomCode: normalizedCode });
+          
+          // Clear the timer
+          if (roundTimers.has(normalizedCode)) {
+            clearTimeout(roundTimers.get(normalizedCode));
+            roundTimers.delete(normalizedCode);
+            console.log('⏱️ Timer cleared - all players guessed');
+          }
+          
+          // Broadcast that round is complete
+          broadcastToRoom(normalizedCode, {
+            type: 'ROUND_COMPLETE',
+            payload: { 
+              word: room.gameState.currentWord,
+              message: `Everyone guessed! The word was: ${room.gameState.currentWord}`
+            }
+          });
+          
+          // Wait a moment then move to next round
+          setTimeout(async () => {
+            await handleNextRound(ws, { roomCode: normalizedCode });
           }, 3000);
         }
       } else {
@@ -771,6 +845,12 @@ async function handleNextRound(ws, payload) {
     const result = nextRound(room.gameState);
     
     if (result.gameOver) {
+      // Clear any active timer
+      if (roundTimers.has(normalizedCode)) {
+        clearTimeout(roundTimers.get(normalizedCode));
+        roundTimers.delete(normalizedCode);
+      }
+      
       broadcastToRoom(normalizedCode, {
         type: 'GAME_OVER',
         payload: result
@@ -780,6 +860,7 @@ async function handleNextRound(ws, payload) {
       await room.save();
     } else {
       room.gameState = result.gameState;
+      room.markModified('gameState');
       await room.save();
       
       broadcastToRoom(normalizedCode, {
@@ -797,6 +878,7 @@ async function handleNextRound(ws, payload) {
               wordChoices: room.gameState.wordOptions 
             }
           }));
+          console.log(`📝 Sent word choices to new drawer: ${room.gameState.currentDrawer}`);
         }
       }, 500);
     }

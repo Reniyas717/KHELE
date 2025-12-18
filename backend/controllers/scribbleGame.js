@@ -19,31 +19,32 @@ function getRandomWords(count = 3) {
 }
 
 function initScribbleGame(players) {
-  console.log('✏️ Initializing Scribble game for players:', players);
-  
-  const wordOptions = getRandomWords(3);
-  console.log('📝 Generated word options:', wordOptions);
+  // Shuffle players for drawing order
+  const shuffledPlayers = [...players].sort(() => Math.random() - 0.5);
   
   const gameState = {
-    players: players.map(username => ({
+    players: shuffledPlayers.map(username => ({
       username,
       score: 0,
       hasGuessed: false
     })),
+    currentDrawer: shuffledPlayers[0],
     currentDrawerIndex: 0,
-    currentDrawer: players[0],
-    wordOptions: wordOptions,
     currentWord: null,
+    wordOptions: getRandomWords(3), // 3 word choices
     round: 1,
-    maxRounds: 3,
-    timeLeft: 90,
-    allGuessed: false,
-    drawingStarted: false
+    maxRounds: players.length * 3, // Each player draws 3 times
+    roundActive: false,
+    roundTimer: 60, // 60 seconds per round
+    roundStartTime: null,
+    scores: {}
   };
-
-  console.log('✅ Scribble game state created');
-  console.log('👤 Current drawer:', gameState.currentDrawer);
-  console.log('📝 Word options:', gameState.wordOptions);
+  
+  console.log('🎮 Scribble game initialized:', {
+    players: shuffledPlayers,
+    maxRounds: gameState.maxRounds,
+    firstDrawer: gameState.currentDrawer
+  });
   
   return gameState;
 }
@@ -60,15 +61,22 @@ function selectWord(gameState, word) {
   gameState.currentWord = word;
   gameState.wordOptions = []; // Clear options after selection
   gameState.roundActive = true;
+  gameState.roundStartTime = Date.now();
   
-  // Reset hasGuessed for all players except drawer
+  // Reset hasGuessed for all players
   gameState.players.forEach(player => {
-    player.hasGuessed = player.username === gameState.currentDrawer;
+    if (player.username === gameState.currentDrawer) {
+      player.hasGuessed = true; // Drawer is marked as "guessed"
+    } else {
+      player.hasGuessed = false;
+    }
   });
   
   console.log('✅ Word set successfully:', {
     currentWord: gameState.currentWord,
-    roundActive: gameState.roundActive
+    roundActive: gameState.roundActive,
+    roundStartTime: gameState.roundStartTime,
+    playersWhoNeedToGuess: gameState.players.filter(p => !p.hasGuessed).length
   });
   
   return gameState;
@@ -126,20 +134,33 @@ function handleGuess(gameState, username, guess) {
     // Mark player as having guessed
     player.hasGuessed = true;
     
-    // Award points (more points for guessing earlier)
+    // Award points based on time and order
+    const timeElapsed = Date.now() - gameState.roundStartTime;
+    const timeBonus = Math.max(0, Math.floor((gameState.roundTimer * 1000 - timeElapsed) / 100));
     const playersWhoGuessed = gameState.players.filter(p => p.hasGuessed && p.username !== gameState.currentDrawer).length;
-    const points = Math.max(100 - (playersWhoGuessed - 1) * 20, 20);
+    const orderBonus = Math.max(100 - (playersWhoGuessed - 1) * 20, 20);
+    const points = orderBonus + timeBonus;
+    
     player.score += points;
     
-    console.log(`✅ Correct guess! ${username} earned ${points} points`);
+    console.log(`✅ Correct guess! ${username} earned ${points} points (order: ${orderBonus}, time: ${timeBonus})`);
     
-    // Check if all players have guessed
-    const allGuessed = gameState.players
-      .filter(p => p.username !== gameState.currentDrawer)
-      .every(p => p.hasGuessed);
+    // Check if all non-drawer players have guessed
+    const totalPlayers = gameState.players.length;
+    const playersWhoNeedToGuess = totalPlayers - 1; // Everyone except drawer
+    const playersWhoHaveGuessed = gameState.players.filter(p => p.hasGuessed && p.username !== gameState.currentDrawer).length;
+    
+    console.log('📊 Guess progress:', {
+      totalPlayers,
+      playersWhoNeedToGuess,
+      playersWhoHaveGuessed,
+      allGuessed: playersWhoHaveGuessed >= playersWhoNeedToGuess
+    });
+    
+    const allGuessed = playersWhoHaveGuessed >= playersWhoNeedToGuess;
     
     if (allGuessed) {
-      console.log('🎉 All players have guessed!');
+      console.log('🎉 All players have guessed correctly!');
       gameState.roundActive = false;
     }
     
@@ -163,42 +184,51 @@ function handleGuess(gameState, username, guess) {
 function nextRound(gameState) {
   console.log('➡️ Moving to next round');
   
+  // End current round
+  gameState.roundActive = false;
+  gameState.currentWord = null;
+  gameState.roundStartTime = null;
+  
   // Reset hasGuessed for all players
-  gameState.players.forEach(p => p.hasGuessed = false);
-  
-  // Move to next drawer
-  const currentIndex = gameState.players.findIndex(p => p.username === gameState.currentDrawer);
-  const nextIndex = (currentIndex + 1) % gameState.players.length;
-  
-  // If we've gone through all players, increment round
-  if (nextIndex === 0) {
-    gameState.round += 1;
-  }
+  gameState.players.forEach(player => {
+    player.hasGuessed = false;
+  });
   
   // Check if game is over
-  if (gameState.round > gameState.maxRounds) {
-    const winner = gameState.players.reduce((max, p) => 
-      p.score > max.score ? p : max
-    );
+  if (gameState.round >= gameState.maxRounds) {
+    console.log('🏁 Game Over!');
+    
+    const finalScores = gameState.players
+      .sort((a, b) => b.score - a.score)
+      .map((player, index) => ({
+        position: index + 1,
+        username: player.username,
+        score: player.score
+      }));
     
     return {
       gameOver: true,
-      winner: winner.username,
-      finalScores: gameState.players.map(p => ({
-        username: p.username,
-        score: p.score
-      }))
+      gameState,
+      finalScores
     };
   }
   
-  // Set new drawer
-  gameState.currentDrawer = gameState.players[nextIndex].username;
-  gameState.currentWord = null;
-  gameState.drawingStarted = false;
-  gameState.allGuessed = false;
+  // Move to next drawer
+  gameState.round++;
+  gameState.currentDrawerIndex = (gameState.currentDrawerIndex + 1) % gameState.players.length;
+  gameState.currentDrawer = gameState.players[gameState.currentDrawerIndex].username;
   gameState.wordOptions = getRandomWords(3);
   
-  return { gameState };
+  console.log('✅ Next round ready:', {
+    round: gameState.round,
+    drawer: gameState.currentDrawer,
+    wordOptions: gameState.wordOptions
+  });
+  
+  return {
+    gameOver: false,
+    gameState
+  };
 }
 
 module.exports = {
