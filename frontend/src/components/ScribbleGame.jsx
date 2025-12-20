@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useWebSocket } from '../context/WebSocketContext';
 import { useTheme } from '../context/ThemeContext';
 import Canvas from './Canvas';
+import HandDrawing from './HandDrawing';
 
 export default function ScribbleGame({ roomCode, username, players, initialGameState, onLeaveRoom }) {
   const { colors } = useTheme();
@@ -11,8 +12,11 @@ export default function ScribbleGame({ roomCode, username, players, initialGameS
   const [showWordChoices, setShowWordChoices] = useState(false);
   const [wordChoices, setWordChoices] = useState([]);
   const [roundStarted, setRoundStarted] = useState(false);
+  const [useCamera, setUseCamera] = useState(false);
+  const [timeRemaining, setTimeRemaining] = useState(null);
   const { sendMessage, on, isConnected } = useWebSocket();
   const listenersSetup = useRef(false);
+  const timerInterval = useRef(null);
 
   const isDrawer = gameState?.currentDrawer === username;
   const currentPlayer = gameState?.players?.find(p => p.username === username);
@@ -27,7 +31,8 @@ export default function ScribbleGame({ roomCode, username, players, initialGameS
     currentDrawer: gameState?.currentDrawer,
     currentWord,
     roundStarted,
-    showWordChoices
+    showWordChoices,
+    useCamera
   });
 
   // Setup WebSocket listeners
@@ -65,6 +70,24 @@ export default function ScribbleGame({ roomCode, username, players, initialGameS
       setShowWordChoices(false);
       setRoundStarted(true);
       
+      // Start timer
+      const timeLimit = payload.timeLimit || 60;
+      setTimeRemaining(timeLimit);
+      
+      if (timerInterval.current) {
+        clearInterval(timerInterval.current);
+      }
+      
+      timerInterval.current = setInterval(() => {
+        setTimeRemaining(prev => {
+          if (prev <= 1) {
+            clearInterval(timerInterval.current);
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+      
       const word = isDrawer ? payload.gameState.currentWord : payload.gameState.currentWord.replace(/./g, '_ ');
       setMessages(prev => [...prev, {
         type: 'system',
@@ -85,15 +108,45 @@ export default function ScribbleGame({ roomCode, username, players, initialGameS
       }
     });
 
+    const unsubTimeUp = on('TIME_UP', (data) => {
+      console.log('⏰ TIME_UP received:', data);
+      const payload = data.payload || data;
+      if (timerInterval.current) {
+        clearInterval(timerInterval.current);
+      }
+      setTimeRemaining(0);
+      setMessages(prev => [...prev, {
+        type: 'system',
+        text: payload.message || `Time's up! The word was: ${payload.word}`
+      }]);
+    });
+
+    const unsubRoundComplete = on('ROUND_COMPLETE', (data) => {
+      console.log('🎊 ROUND_COMPLETE received:', data);
+      const payload = data.payload || data;
+      if (timerInterval.current) {
+        clearInterval(timerInterval.current);
+      }
+      setTimeRemaining(0);
+      setMessages(prev => [...prev, {
+        type: 'system',
+        text: payload.message || `Round complete! The word was: ${payload.word}`
+      }]);
+    });
+
     const unsubRoundEnd = on('ROUND_END', (data) => {
       console.log('🏁 ROUND_END received:', data);
       const payload = data.payload || data;
+      if (timerInterval.current) {
+        clearInterval(timerInterval.current);
+      }
       setMessages(prev => [...prev, {
         type: 'system',
         text: `Round ended! The word was: ${payload.word}`
       }]);
       setGameState(payload.gameState);
       setRoundStarted(false);
+      setTimeRemaining(null);
     });
 
     const unsubNextRound = on('NEXT_ROUND', (data) => {
@@ -101,11 +154,10 @@ export default function ScribbleGame({ roomCode, username, players, initialGameS
       const payload = data.payload || data;
       setGameState(payload.gameState);
       setRoundStarted(false);
-      setMessages(prev => [...prev, {
-        type: 'system',
-        text: `Next round! ${payload.gameState.currentDrawer} is now drawing...`
-      }]);
-      // Clear messages for new round
+      setTimeRemaining(null);
+      if (timerInterval.current) {
+        clearInterval(timerInterval.current);
+      }
       setMessages([{
         type: 'system',
         text: `Next round! ${payload.gameState.currentDrawer} is now drawing...`
@@ -115,6 +167,10 @@ export default function ScribbleGame({ roomCode, username, players, initialGameS
     const unsubGameOver = on('GAME_OVER', (data) => {
       console.log('🏆 GAME_OVER received:', data);
       const payload = data.payload || data;
+      
+      if (timerInterval.current) {
+        clearInterval(timerInterval.current);
+      }
       
       let gameOverMessage = '🎉 Game Over!\n\nFinal Scores:\n';
       if (payload.gameState?.players) {
@@ -127,6 +183,7 @@ export default function ScribbleGame({ roomCode, username, players, initialGameS
       
       alert(gameOverMessage);
       setRoundStarted(false);
+      setTimeRemaining(null);
     });
 
     const unsubChatMessage = on('CHAT_MESSAGE', (data) => {
@@ -143,11 +200,16 @@ export default function ScribbleGame({ roomCode, username, players, initialGameS
 
     return () => {
       console.log('🧹 Cleaning up Scribble listeners');
+      if (timerInterval.current) {
+        clearInterval(timerInterval.current);
+      }
       unsubGameUpdate?.();
       unsubGameStarted?.();
       unsubWordChoices?.();
       unsubRoundStart?.();
       unsubCorrectGuess?.();
+      unsubTimeUp?.();
+      unsubRoundComplete?.();
       unsubRoundEnd?.();
       unsubNextRound?.();
       unsubGameOver?.();
@@ -177,7 +239,6 @@ export default function ScribbleGame({ roomCode, username, players, initialGameS
 
     console.log('💬 Sending message/guess:', message);
     
-    // If drawer or already guessed, send as chat message
     if (isDrawer || hasGuessed) {
       sendMessage('SEND_MESSAGE', {
         roomCode,
@@ -185,7 +246,6 @@ export default function ScribbleGame({ roomCode, username, players, initialGameS
         message
       });
     } else {
-      // Otherwise, it's a guess
       sendMessage('SUBMIT_GUESS', {
         roomCode,
         username,
@@ -194,6 +254,11 @@ export default function ScribbleGame({ roomCode, username, players, initialGameS
     }
 
     setMessage('');
+  };
+
+  const toggleDrawingMode = () => {
+    setUseCamera(!useCamera);
+    console.log('🔄 Switching drawing mode to:', !useCamera ? 'Camera' : 'Mouse');
   };
 
   return (
@@ -214,24 +279,42 @@ export default function ScribbleGame({ roomCode, username, players, initialGameS
           >
             ✏️ Scribble
           </h1>
-          <button
-            onClick={onLeaveRoom}
-            className="px-6 py-3 rounded-lg font-raleway font-bold transition-all hover:scale-105 border"
-            style={{
-              background: 'rgba(239, 68, 68, 0.1)',
-              borderColor: 'rgba(239, 68, 68, 0.5)',
-              color: '#ef4444'
-            }}
-          >
-            Leave Game
-          </button>
+          <div className="flex gap-4">
+            <button
+              onClick={onLeaveRoom}
+              className="px-6 py-3 rounded-lg font-raleway font-bold transition-all hover:scale-105 border"
+              style={{
+                background: 'rgba(239, 68, 68, 0.1)',
+                borderColor: 'rgba(239, 68, 68, 0.5)',
+                color: '#ef4444'
+              }}
+            >
+              Leave Game
+            </button>
+          </div>
         </div>
 
-        {/* Round Info */}
+        {/* Round Info with Timer */}
         <div className="mb-6 text-center">
-          <p className="text-2xl font-orbitron font-bold" style={{ color: colors.text }}>
-            Round {gameState?.round || 1} / {gameState?.maxRounds || 3}
-          </p>
+          <div className="flex items-center justify-center gap-4">
+            <p className="text-2xl font-orbitron font-bold" style={{ color: colors.text }}>
+              Round {gameState?.round || 1} / {gameState?.maxRounds || 6}
+            </p>
+            {timeRemaining !== null && roundStarted && (
+              <div 
+                className="px-4 py-2 rounded-lg font-orbitron font-bold text-xl"
+                style={{
+                  background: timeRemaining <= 10 
+                    ? 'rgba(239, 68, 68, 0.2)' 
+                    : 'rgba(139, 92, 246, 0.2)',
+                  color: timeRemaining <= 10 ? '#ef4444' : colors.secondary,
+                  border: `2px solid ${timeRemaining <= 10 ? '#ef4444' : colors.secondary}`
+                }}
+              >
+                ⏱️ {timeRemaining}s
+              </div>
+            )}
+          </div>
           {roundStarted ? (
             <div>
               <p className="text-lg font-raleway mt-2" style={{ color: colors.textSecondary }}>
@@ -308,9 +391,30 @@ export default function ScribbleGame({ roomCode, username, players, initialGameS
                 borderColor: `${colors.primary}30`
               }}
             >
-              <h2 className="text-2xl font-orbitron font-bold mb-4" style={{ color: colors.text }}>
-                {isDrawer ? '🎨 Draw your word!' : '👀 Watch and guess!'}
-              </h2>
+              {/* Canvas Header with Mode Toggle */}
+              <div className="flex justify-between items-center mb-4">
+                <h2 className="text-2xl font-orbitron font-bold" style={{ color: colors.text }}>
+                  {isDrawer ? '🎨 Draw your word!' : '👀 Watch and guess!'}
+                </h2>
+                
+                {/* Drawing Mode Toggle - Show for drawer during active round */}
+                {isDrawer && roundStarted && (
+                  <button
+                    onClick={toggleDrawingMode}
+                    className="px-4 py-2 rounded-lg font-raleway font-bold transition-all hover:scale-105 border-2 flex items-center gap-2"
+                    style={{
+                      background: useCamera 
+                        ? `linear-gradient(135deg, ${colors.primary}40, ${colors.secondary}20)` 
+                        : 'rgba(100, 100, 100, 0.3)',
+                      borderColor: useCamera ? colors.primary : 'rgba(100, 100, 100, 0.5)',
+                      color: useCamera ? colors.primary : colors.text
+                    }}
+                  >
+                    <span className="text-2xl">{useCamera ? '📷' : '🖱️'}</span>
+                    <span>{useCamera ? 'Camera Mode' : 'Mouse Mode'}</span>
+                  </button>
+                )}
+              </div>
               
               {/* Show message if round hasn't started */}
               {!roundStarted ? (
@@ -326,10 +430,18 @@ export default function ScribbleGame({ roomCode, username, players, initialGameS
                   </div>
                 </div>
               ) : (
-                <Canvas 
-                  roomCode={roomCode} 
-                  canDraw={isDrawer && roundStarted}
-                />
+                // Show camera or mouse drawing based on mode
+                useCamera && isDrawer ? (
+                  <HandDrawing 
+                    roomCode={roomCode} 
+                    canDraw={isDrawer && roundStarted}
+                  />
+                ) : (
+                  <Canvas 
+                    roomCode={roomCode} 
+                    canDraw={isDrawer && roundStarted}
+                  />
+                )
               )}
             </div>
           </div>

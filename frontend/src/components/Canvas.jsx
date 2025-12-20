@@ -1,7 +1,7 @@
 import { useRef, useEffect, useState } from 'react';
 import { useWebSocket } from '../context/WebSocketContext';
 
-export default function Canvas({ roomCode, canDraw = true, onClear }) {
+export default function Canvas({ roomCode, canDraw = true, onClear, useCamera = false }) {
   const canvasRef = useRef(null);
   const [isDrawing, setIsDrawing] = useState(false);
   const [color, setColor] = useState('#000000');
@@ -22,8 +22,6 @@ export default function Canvas({ roomCode, canDraw = true, onClear }) {
       const { drawData } = data.payload;
       if (!drawData) return;
 
-      console.log('🎨 Received draw data from other player');
-
       ctx.strokeStyle = drawData.color;
       ctx.lineWidth = drawData.lineWidth;
 
@@ -36,7 +34,6 @@ export default function Canvas({ roomCode, canDraw = true, onClear }) {
 
     // Listen for canvas clear
     const unsubClear = on('CANVAS_CLEAR', () => {
-      console.log('🧹 Received canvas clear');
       ctx.clearRect(0, 0, canvas.width, canvas.height);
     });
 
@@ -115,9 +112,7 @@ export default function Canvas({ roomCode, canDraw = true, onClear }) {
     const ctx = canvas.getContext('2d');
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    // Broadcast clear to other players
     sendMessage('CANVAS_CLEAR', { roomCode });
-
     if (onClear) onClear();
   };
 
@@ -153,7 +148,7 @@ export default function Canvas({ roomCode, canDraw = true, onClear }) {
             onClick={clearCanvas}
             className="px-4 py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg transition font-bold"
           >
-            🗑️ Clear
+            Clear
           </button>
         </div>
       )}
