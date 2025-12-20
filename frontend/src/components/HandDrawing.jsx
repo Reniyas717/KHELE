@@ -1,17 +1,18 @@
-import { useRef, useEffect, useState } from 'react';
+import { useRef, useEffect, useState, useCallback } from 'react';
 import { useWebSocket } from '../context/WebSocketContext';
 
 export default function HandDrawing({ roomCode, canDraw = true, onClear }) {
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
   const drawCanvasRef = useRef(null);
-  const cameraRef = useRef(null);
   const handsRef = useRef(null);
   const streamRef = useRef(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [color, setColor] = useState('#ff0000');
-  const [lineWidth, setLineWidth] = useState(10);
+  const colorRef = useRef('#ff0000');
+  const lineWidthRef = useRef(10);
+  const [colorDisplay, setColorDisplay] = useState('#ff0000');
+  const [lineWidthDisplay, setLineWidthDisplay] = useState(10);
   const prevPosRef = useRef({ x: 0, y: 0 });
   const isDrawingRef = useRef(false);
   const { sendMessage, on } = useWebSocket();
@@ -25,6 +26,18 @@ export default function HandDrawing({ roomCode, canDraw = true, onClear }) {
     { name: 'Black', value: '#000000' }
   ];
 
+  // Update color without re-render
+  const updateColor = useCallback((newColor) => {
+    colorRef.current = newColor;
+    setColorDisplay(newColor);
+  }, []);
+
+  // Update line width without re-render
+  const updateLineWidth = useCallback((newWidth) => {
+    lineWidthRef.current = newWidth;
+    setLineWidthDisplay(newWidth);
+  }, []);
+
   // Check if canvas elements are ready
   useEffect(() => {
     if (canvasRef.current && drawCanvasRef.current) {
@@ -37,7 +50,7 @@ export default function HandDrawing({ roomCode, canDraw = true, onClear }) {
     let animationFrame = null;
     let isActive = true;
     let smoothX = 0, smoothY = 0;
-    const alpha = 0.5;
+    const alpha = 0.3; // Increased smoothing for better performance
 
     const initCamera = async () => {
       console.log('🎥 Initializing camera mode...');
@@ -68,19 +81,20 @@ export default function HandDrawing({ roomCode, canDraw = true, onClear }) {
           handsRef.current = null;
         }
 
-        const ctx = canvas.getContext('2d');
-        const drawCtx = drawCanvas.getContext('2d');
+        const ctx = canvas.getContext('2d', { alpha: false, desynchronized: true });
+        const drawCtx = drawCanvas.getContext('2d', { alpha: true, desynchronized: true });
         drawCtx.lineCap = 'round';
         drawCtx.lineJoin = 'round';
 
         console.log('🎥 Requesting camera access...');
 
-        // Get camera stream with specific constraints
+        // Get camera stream with lower resolution for faster loading
         const stream = await navigator.mediaDevices.getUserMedia({
           video: {
-            width: { ideal: 640 },
-            height: { ideal: 480 },
-            facingMode: 'user'
+            width: { ideal: 640, max: 640 },
+            height: { ideal: 480, max: 480 },
+            facingMode: 'user',
+            frameRate: { ideal: 30 }
           },
           audio: false
         });
@@ -93,8 +107,9 @@ export default function HandDrawing({ roomCode, canDraw = true, onClear }) {
         streamRef.current = stream;
         videoElement.srcObject = stream;
 
+        // Faster video loading
         await new Promise((resolve, reject) => {
-          const timeout = setTimeout(() => reject(new Error('Video load timeout')), 5000);
+          const timeout = setTimeout(() => reject(new Error('Video load timeout')), 3000);
           videoElement.onloadedmetadata = () => {
             clearTimeout(timeout);
             videoElement.play()
@@ -115,7 +130,7 @@ export default function HandDrawing({ roomCode, canDraw = true, onClear }) {
         
         if (!isActive) return;
 
-        // Initialize MediaPipe Hands
+        // Initialize MediaPipe Hands with faster settings
         const hands = new Hands({
           locateFile: (file) => {
             return `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`;
@@ -124,7 +139,7 @@ export default function HandDrawing({ roomCode, canDraw = true, onClear }) {
 
         hands.setOptions({
           maxNumHands: 1,
-          modelComplexity: 1,
+          modelComplexity: 0, // Reduced from 1 for faster processing
           minDetectionConfidence: 0.5,
           minTrackingConfidence: 0.5
         });
@@ -134,12 +149,15 @@ export default function HandDrawing({ roomCode, canDraw = true, onClear }) {
         hands.onResults((results) => {
           if (!ctx || !drawCtx || !isActive) return;
 
-          // Clear and draw camera feed WITHOUT MIRROR EFFECT
+          // Clear and draw camera feed WITH MIRROR EFFECT
           ctx.save();
           ctx.clearRect(0, 0, canvas.width, canvas.height);
           
-          // Draw image normally (not mirrored)
+          // Mirror the camera feed horizontally
+          ctx.translate(canvas.width, 0);
+          ctx.scale(-1, 1);
           ctx.drawImage(results.image, 0, 0, canvas.width, canvas.height);
+          ctx.restore();
 
           if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
             const landmarks = results.multiHandLandmarks[0];
@@ -159,8 +177,8 @@ export default function HandDrawing({ roomCode, canDraw = true, onClear }) {
             const ringDown = ringTip.y > landmarks[14].y;
             const pinkyDown = pinkyTip.y > landmarks[18].y;
 
-            // Position (no need to invert x since we're not mirroring)
-            const x = indexTip.x * canvas.width;
+            // Position - MIRRORED for natural drawing
+            const x = (1 - indexTip.x) * canvas.width; // Flip X coordinate
             const y = indexTip.y * canvas.height;
 
             // Smooth position
@@ -175,7 +193,8 @@ export default function HandDrawing({ roomCode, canDraw = true, onClear }) {
             const drawingActive = indexUp && !middleUp && ringDown && pinkyDown && canDraw;
             const selectionMode = indexUp && middleUp;
 
-            // Draw finger indicator
+            // Draw finger indicator on camera canvas
+            ctx.save();
             ctx.beginPath();
             ctx.arc(smoothX, smoothY, 15, 0, 2 * Math.PI);
             ctx.fillStyle = drawingActive ? 'rgba(0, 255, 0, 0.7)' : 
@@ -185,13 +204,14 @@ export default function HandDrawing({ roomCode, canDraw = true, onClear }) {
             ctx.strokeStyle = drawingActive ? '#00ff00' : selectionMode ? '#ffa500' : '#fff';
             ctx.lineWidth = 3;
             ctx.stroke();
+            ctx.restore();
 
             // Selection mode - change color
             if (selectionMode && y < 100) {
               const colorWidth = canvas.width / colors.length;
-              const selectedIndex = Math.floor(x / colorWidth);
+              const selectedIndex = Math.floor(smoothX / colorWidth);
               if (selectedIndex >= 0 && selectedIndex < colors.length) {
-                setColor(colors[selectedIndex].value);
+                updateColor(colors[selectedIndex].value);
               }
             }
             // Drawing mode
@@ -201,8 +221,8 @@ export default function HandDrawing({ roomCode, canDraw = true, onClear }) {
                 prevPosRef.current = { x: smoothX, y: smoothY };
               } else {
                 // Draw on canvas
-                drawCtx.strokeStyle = color;
-                drawCtx.lineWidth = lineWidth;
+                drawCtx.strokeStyle = colorRef.current;
+                drawCtx.lineWidth = lineWidthRef.current;
                 drawCtx.beginPath();
                 drawCtx.moveTo(prevPosRef.current.x, prevPosRef.current.y);
                 drawCtx.lineTo(smoothX, smoothY);
@@ -216,8 +236,8 @@ export default function HandDrawing({ roomCode, canDraw = true, onClear }) {
                     y0: prevPosRef.current.y,
                     x1: smoothX,
                     y1: smoothY,
-                    color,
-                    lineWidth
+                    color: colorRef.current,
+                    lineWidth: lineWidthRef.current
                   }
                 });
 
@@ -229,8 +249,6 @@ export default function HandDrawing({ roomCode, canDraw = true, onClear }) {
           } else {
             isDrawingRef.current = false;
           }
-
-          ctx.restore();
         });
 
         console.log('🖐️ Starting hand detection...');
@@ -275,13 +293,10 @@ export default function HandDrawing({ roomCode, canDraw = true, onClear }) {
     // Initialize camera only when canvas is ready and canDraw is true
     if (canDraw && canvasReady) {
       console.log('🚀 Starting camera initialization (canvas ready)...');
-      // Small delay to ensure DOM is fully ready
-      const timer = setTimeout(() => {
-        initCamera();
-      }, 300);
+      // Immediate initialization for faster loading
+      initCamera();
       
       return () => {
-        clearTimeout(timer);
         isActive = false;
 
         if (animationFrame) {
@@ -328,7 +343,7 @@ export default function HandDrawing({ roomCode, canDraw = true, onClear }) {
         videoRef.current.srcObject = null;
       }
     };
-  }, [canDraw, canvasReady, roomCode, sendMessage, color, lineWidth]);
+  }, [canDraw, canvasReady, roomCode, sendMessage, updateColor]);
 
   // Listen for drawing from other players
   useEffect(() => {
@@ -342,6 +357,8 @@ export default function HandDrawing({ roomCode, canDraw = true, onClear }) {
       const drawCtx = drawCanvas.getContext('2d');
       drawCtx.strokeStyle = drawData.color;
       drawCtx.lineWidth = drawData.lineWidth;
+      drawCtx.lineCap = 'round';
+      drawCtx.lineJoin = 'round';
       drawCtx.beginPath();
       drawCtx.moveTo(drawData.x0, drawData.y0);
       drawCtx.lineTo(drawData.x1, drawData.y1);
@@ -361,7 +378,7 @@ export default function HandDrawing({ roomCode, canDraw = true, onClear }) {
     };
   }, [on]);
 
-  const clearCanvas = () => {
+  const clearCanvas = useCallback(() => {
     const drawCanvas = drawCanvasRef.current;
     if (!drawCanvas) return;
     const drawCtx = drawCanvas.getContext('2d');
@@ -369,7 +386,7 @@ export default function HandDrawing({ roomCode, canDraw = true, onClear }) {
 
     sendMessage('CANVAS_CLEAR', { roomCode });
     if (onClear) onClear();
-  };
+  }, [roomCode, sendMessage, onClear]);
 
   return (
     <div className="flex flex-col items-center gap-4">
@@ -380,8 +397,8 @@ export default function HandDrawing({ roomCode, canDraw = true, onClear }) {
             <label className="text-white text-sm">Color:</label>
             <input
               type="color"
-              value={color}
-              onChange={(e) => setColor(e.target.value)}
+              value={colorDisplay}
+              onChange={(e) => updateColor(e.target.value)}
               className="w-12 h-8 cursor-pointer rounded"
             />
           </div>
@@ -392,11 +409,11 @@ export default function HandDrawing({ roomCode, canDraw = true, onClear }) {
               type="range"
               min="5"
               max="30"
-              value={lineWidth}
-              onChange={(e) => setLineWidth(parseInt(e.target.value))}
+              value={lineWidthDisplay}
+              onChange={(e) => updateLineWidth(parseInt(e.target.value))}
               className="w-32"
             />
-            <span className="text-white text-sm w-8">{lineWidth}px</span>
+            <span className="text-white text-sm w-8">{lineWidthDisplay}px</span>
           </div>
 
           <button
