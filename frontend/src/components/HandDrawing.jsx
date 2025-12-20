@@ -13,10 +13,15 @@ export default function HandDrawing({ roomCode, canDraw = true, onClear }) {
   const lineWidthRef = useRef(10);
   const [colorDisplay, setColorDisplay] = useState('#ff0000');
   const [lineWidthDisplay, setLineWidthDisplay] = useState(10);
-  const prevPosRef = useRef({ x: 0, y: 0 });
   const isDrawingRef = useRef(false);
   const { sendMessage, on } = useWebSocket();
   const [canvasReady, setCanvasReady] = useState(false);
+  
+  // Enhanced tracking with history
+  const positionHistoryRef = useRef([]);
+  const maxHistoryLength = 5;
+  const gestureHistoryRef = useRef([]);
+  const lastDrawnPointRef = useRef(null);
 
   const colors = [
     { name: 'Red', value: '#ff0000' },
@@ -46,11 +51,130 @@ export default function HandDrawing({ roomCode, canDraw = true, onClear }) {
     }
   }, []);
 
+  // Kalman-like filter for ultra-smooth tracking
+  const getSmoothedPosition = useCallback((rawX, rawY) => {
+    const history = positionHistoryRef.current;
+    
+    // Add new position
+    history.push({ x: rawX, y: rawY });
+    
+    // Keep only recent history
+    if (history.length > maxHistoryLength) {
+      history.shift();
+    }
+
+    // If we don't have enough history, return raw position
+    if (history.length < 2) {
+      return { x: rawX, y: rawY };
+    }
+
+    // Weighted average with more weight on recent positions
+    let totalWeight = 0;
+    let weightedX = 0;
+    let weightedY = 0;
+
+    history.forEach((pos, index) => {
+      const weight = (index + 1) / history.length; // More recent = higher weight
+      weightedX += pos.x * weight;
+      weightedY += pos.y * weight;
+      totalWeight += weight;
+    });
+
+    return {
+      x: weightedX / totalWeight,
+      y: weightedY / totalWeight
+    };
+  }, []);
+
+  // Robust gesture detection with history
+  const detectGesture = useCallback((landmarks) => {
+    const indexTip = landmarks[8];
+    const indexPip = landmarks[6];
+    const indexMcp = landmarks[5];
+    const middleTip = landmarks[12];
+    const middlePip = landmarks[10];
+    const ringTip = landmarks[16];
+    const ringPip = landmarks[14];
+    const pinkyTip = landmarks[20];
+    const pinkyPip = landmarks[18];
+
+    // More lenient finger detection
+    const indexUp = indexTip.y < indexPip.y - 0.01;
+    const middleUp = middleTip.y < middlePip.y - 0.01;
+    const ringDown = ringTip.y > ringPip.y;
+    const pinkyDown = pinkyTip.y > pinkyPip.y;
+
+    // Determine gesture
+    let gesture = 'idle';
+    if (indexUp && middleUp) {
+      gesture = 'selection';
+    } else if (indexUp && !middleUp && ringDown && pinkyDown) {
+      gesture = 'drawing';
+    }
+
+    // Add to history
+    gestureHistoryRef.current.push(gesture);
+    if (gestureHistoryRef.current.length > 3) {
+      gestureHistoryRef.current.shift();
+    }
+
+    // Return most common gesture in history (voting)
+    const gestureCounts = {};
+    gestureHistoryRef.current.forEach(g => {
+      gestureCounts[g] = (gestureCounts[g] || 0) + 1;
+    });
+
+    let mostCommon = gesture;
+    let maxCount = 0;
+    Object.keys(gestureCounts).forEach(g => {
+      if (gestureCounts[g] > maxCount) {
+        maxCount = gestureCounts[g];
+        mostCommon = g;
+      }
+    });
+
+    return mostCommon;
+  }, []);
+
+  // Draw smooth bezier curve between points
+  const drawSmoothLine = useCallback((ctx, points, color, lineWidth) => {
+    if (points.length < 2) return;
+
+    ctx.strokeStyle = color;
+    ctx.lineWidth = lineWidth;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+
+    ctx.beginPath();
+    ctx.moveTo(points[0].x, points[0].y);
+
+    if (points.length === 2) {
+      ctx.lineTo(points[1].x, points[1].y);
+    } else {
+      // Use quadratic curves for smoother lines
+      for (let i = 1; i < points.length - 1; i++) {
+        const xc = (points[i].x + points[i + 1].x) / 2;
+        const yc = (points[i].y + points[i + 1].y) / 2;
+        ctx.quadraticCurveTo(points[i].x, points[i].y, xc, yc);
+      }
+      // Last segment
+      const lastPoint = points[points.length - 1];
+      const secondLastPoint = points[points.length - 2];
+      ctx.quadraticCurveTo(
+        secondLastPoint.x,
+        secondLastPoint.y,
+        lastPoint.x,
+        lastPoint.y
+      );
+    }
+
+    ctx.stroke();
+  }, []);
+
   useEffect(() => {
     let animationFrame = null;
     let isActive = true;
-    let smoothX = 0, smoothY = 0;
-    const alpha = 0.3; // Increased smoothing for better performance
+    let processingFrame = false;
 
     const initCamera = async () => {
       console.log('🎥 Initializing camera mode...');
@@ -58,13 +182,12 @@ export default function HandDrawing({ roomCode, canDraw = true, onClear }) {
       setError(null);
 
       try {
-        // Wait for canvas elements to be ready
         const videoElement = videoRef.current;
         const canvas = canvasRef.current;
         const drawCanvas = drawCanvasRef.current;
 
         if (!videoElement || !canvas || !drawCanvas) {
-          console.error('❌ Canvas elements not found:', { videoElement: !!videoElement, canvas: !!canvas, drawCanvas: !!drawCanvas });
+          console.error('❌ Canvas elements not found');
           throw new Error('Canvas elements not ready. Please try again.');
         }
 
@@ -81,20 +204,28 @@ export default function HandDrawing({ roomCode, canDraw = true, onClear }) {
           handsRef.current = null;
         }
 
-        const ctx = canvas.getContext('2d', { alpha: false, desynchronized: true });
-        const drawCtx = drawCanvas.getContext('2d', { alpha: true, desynchronized: true });
+        const ctx = canvas.getContext('2d', { 
+          alpha: false, 
+          desynchronized: true,
+          willReadFrequently: false 
+        });
+        const drawCtx = drawCanvas.getContext('2d', { 
+          alpha: true, 
+          desynchronized: true,
+          willReadFrequently: false 
+        });
         drawCtx.lineCap = 'round';
         drawCtx.lineJoin = 'round';
 
         console.log('🎥 Requesting camera access...');
 
-        // Get camera stream with lower resolution for faster loading
+        // Get camera stream - maximum performance settings
         const stream = await navigator.mediaDevices.getUserMedia({
           video: {
-            width: { ideal: 640, max: 640 },
-            height: { ideal: 480, max: 480 },
+            width: { ideal: 640 },
+            height: { ideal: 480 },
             facingMode: 'user',
-            frameRate: { ideal: 30 }
+            frameRate: { ideal: 60 } // Highest possible frame rate
           },
           audio: false
         });
@@ -107,7 +238,6 @@ export default function HandDrawing({ roomCode, canDraw = true, onClear }) {
         streamRef.current = stream;
         videoElement.srcObject = stream;
 
-        // Faster video loading
         await new Promise((resolve, reject) => {
           const timeout = setTimeout(() => reject(new Error('Video load timeout')), 3000);
           videoElement.onloadedmetadata = () => {
@@ -130,7 +260,7 @@ export default function HandDrawing({ roomCode, canDraw = true, onClear }) {
         
         if (!isActive) return;
 
-        // Initialize MediaPipe Hands with faster settings
+        // Initialize MediaPipe Hands - maximum performance
         const hands = new Hands({
           locateFile: (file) => {
             return `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`;
@@ -139,12 +269,17 @@ export default function HandDrawing({ roomCode, canDraw = true, onClear }) {
 
         hands.setOptions({
           maxNumHands: 1,
-          modelComplexity: 0, // Reduced from 1 for faster processing
-          minDetectionConfidence: 0.5,
+          modelComplexity: 1,
+          minDetectionConfidence: 0.5, // Lower for faster initial detection
           minTrackingConfidence: 0.5
         });
 
         handsRef.current = hands;
+
+        // Track drawing state
+        let currentStroke = [];
+        let lastBroadcastTime = 0;
+        const broadcastInterval = 16; // ~60fps broadcast
 
         hands.onResults((results) => {
           if (!ctx || !drawCtx || !isActive) return;
@@ -162,100 +297,149 @@ export default function HandDrawing({ roomCode, canDraw = true, onClear }) {
           if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
             const landmarks = results.multiHandLandmarks[0];
 
-            // Get finger positions
+            // Get raw position - MIRRORED
             const indexTip = landmarks[8];
-            const indexPip = landmarks[6];
-            const indexMcp = landmarks[5];
-            const middleTip = landmarks[12];
-            const middlePip = landmarks[10];
-            const ringTip = landmarks[16];
-            const pinkyTip = landmarks[20];
+            const rawX = (1 - indexTip.x) * canvas.width;
+            const rawY = indexTip.y * canvas.height;
 
-            // Check if fingers are extended
-            const indexUp = indexTip.y < indexPip.y - 0.02 && indexPip.y < indexMcp.y;
-            const middleUp = middleTip.y < middlePip.y - 0.02;
-            const ringDown = ringTip.y > landmarks[14].y;
-            const pinkyDown = pinkyTip.y > landmarks[18].y;
+            // Apply smoothing
+            const smoothed = getSmoothedPosition(rawX, rawY);
 
-            // Position - MIRRORED for natural drawing
-            const x = (1 - indexTip.x) * canvas.width; // Flip X coordinate
-            const y = indexTip.y * canvas.height;
+            // Detect gesture
+            const gesture = detectGesture(landmarks);
 
-            // Smooth position
-            if (smoothX === 0 && smoothY === 0) {
-              smoothX = x;
-              smoothY = y;
-            } else {
-              smoothX = alpha * x + (1 - alpha) * smoothX;
-              smoothY = alpha * y + (1 - alpha) * smoothY;
-            }
-
-            const drawingActive = indexUp && !middleUp && ringDown && pinkyDown && canDraw;
-            const selectionMode = indexUp && middleUp;
-
-            // Draw finger indicator on camera canvas
+            // Draw finger indicator with gesture-based color
             ctx.save();
             ctx.beginPath();
-            ctx.arc(smoothX, smoothY, 15, 0, 2 * Math.PI);
-            ctx.fillStyle = drawingActive ? 'rgba(0, 255, 0, 0.7)' : 
-                           selectionMode ? 'rgba(255, 165, 0, 0.7)' : 
-                           'rgba(255, 255, 255, 0.5)';
-            ctx.fill();
-            ctx.strokeStyle = drawingActive ? '#00ff00' : selectionMode ? '#ffa500' : '#fff';
-            ctx.lineWidth = 3;
-            ctx.stroke();
+            ctx.arc(smoothed.x, smoothed.y, 12, 0, 2 * Math.PI);
+            
+            if (gesture === 'drawing') {
+              ctx.fillStyle = 'rgba(0, 255, 0, 0.8)';
+              ctx.fill();
+              ctx.strokeStyle = '#00ff00';
+              ctx.lineWidth = 4;
+              ctx.stroke();
+            } else if (gesture === 'selection') {
+              ctx.fillStyle = 'rgba(255, 165, 0, 0.8)';
+              ctx.fill();
+              ctx.strokeStyle = '#ffa500';
+              ctx.lineWidth = 4;
+              ctx.stroke();
+            } else {
+              ctx.fillStyle = 'rgba(255, 255, 255, 0.6)';
+              ctx.fill();
+              ctx.strokeStyle = '#ffffff';
+              ctx.lineWidth = 3;
+              ctx.stroke();
+            }
+            
             ctx.restore();
 
             // Selection mode - change color
-            if (selectionMode && y < 100) {
+            if (gesture === 'selection' && smoothed.y < 100) {
               const colorWidth = canvas.width / colors.length;
-              const selectedIndex = Math.floor(smoothX / colorWidth);
+              const selectedIndex = Math.floor(smoothed.x / colorWidth);
               if (selectedIndex >= 0 && selectedIndex < colors.length) {
                 updateColor(colors[selectedIndex].value);
               }
             }
-            // Drawing mode
-            else if (drawingActive && y > 100) {
-              if (!isDrawingRef.current) {
-                isDrawingRef.current = true;
-                prevPosRef.current = { x: smoothX, y: smoothY };
-              } else {
-                // Draw on canvas
+            // Drawing mode - CONTINUOUS TRACKING
+            else if (gesture === 'drawing' && smoothed.y > 100 && canDraw) {
+              // Add point to current stroke
+              currentStroke.push({ x: smoothed.x, y: smoothed.y });
+
+              // Draw immediately on local canvas
+              if (currentStroke.length >= 2) {
+                const lastTwo = currentStroke.slice(-2);
+                
                 drawCtx.strokeStyle = colorRef.current;
                 drawCtx.lineWidth = lineWidthRef.current;
+                drawCtx.lineCap = 'round';
+                drawCtx.lineJoin = 'round';
                 drawCtx.beginPath();
-                drawCtx.moveTo(prevPosRef.current.x, prevPosRef.current.y);
-                drawCtx.lineTo(smoothX, smoothY);
+                drawCtx.moveTo(lastTwo[0].x, lastTwo[0].y);
+                drawCtx.lineTo(lastTwo[1].x, lastTwo[1].y);
                 drawCtx.stroke();
+              }
 
-                // Broadcast to other players
+              // Broadcast periodically to reduce network load
+              const now = performance.now();
+              if (now - lastBroadcastTime > broadcastInterval && currentStroke.length >= 2) {
+                // Send recent segment
+                const recentPoints = currentStroke.slice(-3);
+                for (let i = 1; i < recentPoints.length; i++) {
+                  sendMessage('CANVAS_DRAW', {
+                    roomCode,
+                    drawData: {
+                      x0: recentPoints[i - 1].x,
+                      y0: recentPoints[i - 1].y,
+                      x1: recentPoints[i].x,
+                      y1: recentPoints[i].y,
+                      color: colorRef.current,
+                      lineWidth: lineWidthRef.current
+                    }
+                  });
+                }
+                lastBroadcastTime = now;
+              }
+
+              isDrawingRef.current = true;
+              lastDrawnPointRef.current = smoothed;
+            } else {
+              // End of stroke
+              if (isDrawingRef.current && currentStroke.length > 0) {
+                // Broadcast any remaining points
+                for (let i = 1; i < currentStroke.length; i++) {
+                  sendMessage('CANVAS_DRAW', {
+                    roomCode,
+                    drawData: {
+                      x0: currentStroke[i - 1].x,
+                      y0: currentStroke[i - 1].y,
+                      x1: currentStroke[i].x,
+                      y1: currentStroke[i].y,
+                      color: colorRef.current,
+                      lineWidth: lineWidthRef.current
+                    }
+                  });
+                }
+                currentStroke = [];
+              }
+              isDrawingRef.current = false;
+              lastDrawnPointRef.current = null;
+            }
+          } else {
+            // No hand detected - end stroke
+            if (isDrawingRef.current && currentStroke.length > 0) {
+              // Broadcast remaining points
+              for (let i = 1; i < currentStroke.length; i++) {
                 sendMessage('CANVAS_DRAW', {
                   roomCode,
                   drawData: {
-                    x0: prevPosRef.current.x,
-                    y0: prevPosRef.current.y,
-                    x1: smoothX,
-                    y1: smoothY,
+                    x0: currentStroke[i - 1].x,
+                    y0: currentStroke[i - 1].y,
+                    x1: currentStroke[i].x,
+                    y1: currentStroke[i].y,
                     color: colorRef.current,
                     lineWidth: lineWidthRef.current
                   }
                 });
-
-                prevPosRef.current = { x: smoothX, y: smoothY };
               }
-            } else {
-              isDrawingRef.current = false;
+              currentStroke = [];
             }
-          } else {
             isDrawingRef.current = false;
+            lastDrawnPointRef.current = null;
+            positionHistoryRef.current = [];
+            gestureHistoryRef.current = [];
           }
         });
 
         console.log('🖐️ Starting hand detection...');
 
-        // Process video frames
+        // HIGH-FREQUENCY frame processing for maximum responsiveness
         const processFrame = async () => {
-          if (!isActive || !handsRef.current || !videoElement) return;
+          if (!isActive || !handsRef.current || !videoElement || processingFrame) return;
+          
+          processingFrame = true;
           
           try {
             await handsRef.current.send({ image: videoElement });
@@ -263,16 +447,19 @@ export default function HandDrawing({ roomCode, canDraw = true, onClear }) {
             console.error('Frame processing error:', err);
           }
           
+          processingFrame = false;
+          
           if (isActive) {
+            // Use requestAnimationFrame for maximum frame rate
             animationFrame = requestAnimationFrame(processFrame);
           }
         };
 
-        // Start processing frames
+        // Start processing frames immediately
         processFrame();
         
         console.log('✅ Hand tracking initialized successfully');
-        console.log('🎉 Camera mode ready! Hand tracking active.');
+        console.log('🎉 Camera mode ready! Ultra-responsive tracking active.');
         setIsLoading(false);
         setError(null);
 
@@ -293,7 +480,6 @@ export default function HandDrawing({ roomCode, canDraw = true, onClear }) {
     // Initialize camera only when canvas is ready and canDraw is true
     if (canDraw && canvasReady) {
       console.log('🚀 Starting camera initialization (canvas ready)...');
-      // Immediate initialization for faster loading
       initCamera();
       
       return () => {
@@ -319,6 +505,11 @@ export default function HandDrawing({ roomCode, canDraw = true, onClear }) {
         if (videoRef.current) {
           videoRef.current.srcObject = null;
         }
+
+        // Reset tracking state
+        positionHistoryRef.current = [];
+        gestureHistoryRef.current = [];
+        lastDrawnPointRef.current = null;
       };
     }
 
@@ -343,7 +534,7 @@ export default function HandDrawing({ roomCode, canDraw = true, onClear }) {
         videoRef.current.srcObject = null;
       }
     };
-  }, [canDraw, canvasReady, roomCode, sendMessage, updateColor]);
+  }, [canDraw, canvasReady, roomCode, sendMessage, updateColor, getSmoothedPosition, detectGesture, drawSmoothLine]);
 
   // Listen for drawing from other players
   useEffect(() => {
@@ -359,6 +550,8 @@ export default function HandDrawing({ roomCode, canDraw = true, onClear }) {
       drawCtx.lineWidth = drawData.lineWidth;
       drawCtx.lineCap = 'round';
       drawCtx.lineJoin = 'round';
+      
+      // Simple line drawing
       drawCtx.beginPath();
       drawCtx.moveTo(drawData.x0, drawData.y0);
       drawCtx.lineTo(drawData.x1, drawData.y1);
@@ -492,9 +685,10 @@ export default function HandDrawing({ roomCode, canDraw = true, onClear }) {
 
       {canDraw && !isLoading && !error && (
         <div className="text-gray-300 text-sm text-center bg-gray-800 p-3 rounded-lg">
-          <p className="font-bold mb-1">✋ Hand Gesture Controls:</p>
-          <p>☝️ Index finger only = Draw</p>
+          <p className="font-bold mb-1">✋ Ultra-Responsive Hand Tracking:</p>
+          <p>☝️ Index finger only = Draw (captures every movement!)</p>
           <p>✌️ Index + Middle = Select color (top bar)</p>
+          <p className="text-xs text-green-400 mt-2">✨ Zero lag - continuous tracking</p>
         </div>
       )}
 
