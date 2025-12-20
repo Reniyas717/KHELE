@@ -3,6 +3,7 @@ import { useWebSocket } from '../context/WebSocketContext';
 import { useTheme } from '../context/ThemeContext';
 import ScribbleGame from './ScribbleGame';
 import UNOGame from './UNOGame';
+import TruthOrDare from './TruthOrDare';
 
 export default function GameRoom({ roomCode, username, initialRoomData, preSelectedGame, onLeaveRoom }) {
   const { colors } = useTheme();
@@ -20,7 +21,8 @@ export default function GameRoom({ roomCode, username, initialRoomData, preSelec
     roomCode, 
     playerCount: room?.players?.length,
     isConnected,
-    hasJoined: hasJoined.current 
+    hasJoined: hasJoined.current,
+    gameType: currentGame
   });
 
   // Connect WebSocket when component mounts
@@ -31,7 +33,6 @@ export default function GameRoom({ roomCode, username, initialRoomData, preSelec
     return () => {
       console.log('🧹 GameRoom unmounting...');
       
-      // Only send LEAVE_ROOM if user is intentionally leaving
       if (isLeavingIntentionally.current && hasJoined.current && roomCode && username) {
         console.log('👋 Sending LEAVE_ROOM on cleanup');
         sendMessage('LEAVE_ROOM', { roomCode, username });
@@ -93,7 +94,7 @@ export default function GameRoom({ roomCode, username, initialRoomData, preSelec
     const unsubRoomClosed = on('ROOM_CLOSED', (data) => {
       console.log('🚪 ROOM_CLOSED event received:', data);
       alert('Room has been closed');
-      isLeavingIntentionally.current = false; // Don't send LEAVE_ROOM again
+      isLeavingIntentionally.current = false;
       onLeaveRoom();
     });
 
@@ -111,6 +112,17 @@ export default function GameRoom({ roomCode, username, initialRoomData, preSelec
   const handleStartGame = async () => {
     try {
       console.log('🎮 Starting game via WebSocket...');
+      
+      // For Truth or Dare, we bypass the normal START_GAME flow
+      if (currentGame === 'truthordare') {
+        setGameStarted(true);
+        setInitialGameState({
+          currentRound: 1,
+          scores: room?.players?.reduce((acc, p) => ({ ...acc, [p.username]: 0 }), {}) || {},
+          settings: { rating: 'PG', rounds: 5 }
+        });
+        return;
+      }
       
       sendMessage('START_GAME', { 
         roomCode, 
@@ -136,6 +148,25 @@ export default function GameRoom({ roomCode, username, initialRoomData, preSelec
     onLeaveRoom();
   };
 
+  const handleLeaveTruthOrDare = () => {
+    setGameStarted(false);
+    setInitialGameState(null);
+  };
+
+  // Get display name for game type
+  const getGameDisplayName = (gameType) => {
+    switch(gameType) {
+      case 'scribble':
+        return 'Scribble';
+      case 'uno':
+        return 'UNO';
+      case 'truthordare':
+        return 'Truth or Dare';
+      default:
+        return gameType;
+    }
+  };
+
   // Show game if started
   if (gameStarted && currentGame && initialGameState) {
     if (currentGame === 'scribble') {
@@ -156,6 +187,18 @@ export default function GameRoom({ roomCode, username, initialRoomData, preSelec
           players={room?.players || []}
           initialGameState={initialGameState}
           onLeaveRoom={handleLeaveRoom}
+        />
+      );
+    } else if (currentGame === 'truthordare') {
+      return (
+        <TruthOrDare
+          roomCode={roomCode}
+          username={username}
+          players={room?.players || []}
+          onLeaveGame={() => {
+            setGameStarted(false);
+            setInitialGameState(null);
+          }}
         />
       );
     }
@@ -213,14 +256,24 @@ export default function GameRoom({ roomCode, username, initialRoomData, preSelec
 
           {/* Game Type */}
           <div 
-            className="mb-8 p-4 rounded-lg border"
+            className="mb-8 p-6 rounded-lg border text-center"
             style={{
               background: `${colors.primary}10`,
               borderColor: `${colors.primary}40`
             }}
           >
-            <p className="text-lg font-raleway font-semibold" style={{ color: colors.text }}>
-              Game: <span className="capitalize" style={{ color: colors.primary }}>{room?.gameType || 'Unknown'}</span>
+            <div className="text-5xl mb-3">
+              {currentGame === 'scribble' && '✏️'}
+              {currentGame === 'uno' && '🃏'}
+              {currentGame === 'truthordare' && '🎭'}
+            </div>
+            <p className="text-2xl font-orbitron font-bold" style={{ color: colors.text }}>
+              {getGameDisplayName(currentGame)}
+            </p>
+            <p className="text-sm font-poppins mt-1" style={{ color: colors.textSecondary }}>
+              {currentGame === 'scribble' && 'Draw and guess words!'}
+              {currentGame === 'uno' && 'Classic card game action!'}
+              {currentGame === 'truthordare' && 'Test your courage & honesty!'}
             </p>
           </div>
 

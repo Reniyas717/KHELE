@@ -36,7 +36,7 @@ const gameRoomSchema = new mongoose.Schema({
   },
   gameType: {
     type: String,
-    enum: ['scribble', 'uno'],
+    enum: ['scribble', 'uno', 'truthordare'], // ADDED truthordare
     required: true
   },
   players: [playerSchema],

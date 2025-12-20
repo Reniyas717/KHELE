@@ -87,6 +87,30 @@ function initWebSocket(server) {
             await handleRequestHand(ws, data.payload);
             break;
             
+          case 'TOD_SETTINGS_UPDATE':
+            await handleTODSettingsUpdate(ws, data.payload);
+            break;
+            
+          case 'TOD_GAME_START':
+            await handleTODGameStart(ws, data.payload);
+            break;
+            
+          case 'TOD_SPIN_WHEEL':
+            await handleTODSpinWheel(ws, data.payload);
+            break;
+            
+          case 'TOD_CARD_SELECTED':
+            await handleTODCardSelected(ws, data.payload);
+            break;
+            
+          case 'TOD_RATING_SUBMITTED':
+            await handleTODRatingSubmitted(ws, data.payload);
+            break;
+            
+          case 'TOD_NEXT_ROUND':
+            await handleTODNextRound(ws, data.payload);
+            break;
+            
           default:
             console.log('⚠️ Unknown message type:', data.type);
         }
@@ -1205,6 +1229,106 @@ async function handleRequestHand(ws, payload) {
       type: 'ERROR',
       payload: { message: error.message }
     }));
+  }
+}
+
+// ===========================================
+// TRUTH OR DARE HANDLERS (NEW)
+// ===========================================
+
+async function handleTODSettingsUpdate(ws, payload) {
+  try {
+    const { roomCode, settings } = payload;
+    const normalizedCode = roomCode.toUpperCase().trim();
+    
+    console.log('⚙️ TOD_SETTINGS_UPDATE:', { roomCode: normalizedCode, settings });
+    
+    broadcastToRoom(normalizedCode, {
+      type: 'TOD_SETTINGS_UPDATE',
+      payload: { settings }
+    });
+  } catch (error) {
+    console.error('❌ Error in handleTODSettingsUpdate:', error);
+  }
+}
+
+async function handleTODGameStart(ws, payload) {
+  try {
+    const { roomCode, settings } = payload;
+    const normalizedCode = roomCode.toUpperCase().trim();
+    
+    console.log('🎭 TOD_GAME_START:', { roomCode: normalizedCode, settings });
+    
+    broadcastToRoom(normalizedCode, {
+      type: 'TOD_GAME_START',
+      payload: { settings }
+    });
+  } catch (error) {
+    console.error('❌ Error in handleTODGameStart:', error);
+  }
+}
+
+async function handleTODSpinWheel(ws, payload) {
+  try {
+    const { roomCode, selectedPlayer } = payload;
+    const normalizedCode = roomCode.toUpperCase().trim();
+    
+    console.log('🎡 TOD_SPIN_WHEEL:', { roomCode: normalizedCode, selectedPlayer });
+    
+    broadcastToRoom(normalizedCode, {
+      type: 'TOD_SPIN_WHEEL',
+      payload: { selectedPlayer }
+    });
+  } catch (error) {
+    console.error('❌ Error in handleTODSpinWheel:', error);
+  }
+}
+
+async function handleTODCardSelected(ws, payload) {
+  try {
+    const { roomCode, card } = payload;
+    const normalizedCode = roomCode.toUpperCase().trim();
+    
+    console.log('🎴 TOD_CARD_SELECTED:', { roomCode: normalizedCode, card });
+    
+    broadcastToRoom(normalizedCode, {
+      type: 'TOD_CARD_SELECTED',
+      payload: { card }
+    });
+  } catch (error) {
+    console.error('❌ Error in handleTODCardSelected:', error);
+  }
+}
+
+async function handleTODRatingSubmitted(ws, payload) {
+  try {
+    const { roomCode, rater, rating } = payload;
+    const normalizedCode = roomCode.toUpperCase().trim();
+    
+    console.log('⭐ TOD_RATING_SUBMITTED:', { roomCode: normalizedCode, rater, rating });
+    
+    broadcastToRoom(normalizedCode, {
+      type: 'TOD_RATING_SUBMITTED',
+      payload: { rater, rating }
+    });
+  } catch (error) {
+    console.error('❌ Error in handleTODRatingSubmitted:', error);
+  }
+}
+
+async function handleTODNextRound(ws, payload) {
+  try {
+    const { roomCode, scores, round } = payload;
+    const normalizedCode = roomCode.toUpperCase().trim();
+    
+    console.log('➡️ TOD_NEXT_ROUND:', { roomCode: normalizedCode, round });
+    
+    broadcastToRoom(normalizedCode, {
+      type: 'TOD_NEXT_ROUND',
+      payload: { scores, round }
+    });
+  } catch (error) {
+    console.error('❌ Error in handleTODNextRound:', error);
   }
 }
 

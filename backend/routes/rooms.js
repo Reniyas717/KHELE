@@ -15,8 +15,9 @@ router.post('/create', async (req, res) => {
       return res.status(400).json({ error: 'gameType and username are required' });
     }
     
-    if (!['scribble', 'uno'].includes(gameType)) {
-      return res.status(400).json({ error: 'Invalid game type. Must be scribble or uno' });
+    // ADDED truthordare to valid types
+    if (!['scribble', 'uno', 'truthordare'].includes(gameType)) {
+      return res.status(400).json({ error: 'Invalid game type. Must be scribble, uno, or truthordare' });
     }
     
     // Generate unique 6-character code

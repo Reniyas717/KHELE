@@ -106,7 +106,7 @@ export default function Lobby({ onRoomJoined, onLogout }) {
         {showGameSelection && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
             <div 
-              className="rounded-2xl p-8 max-w-2xl w-full border"
+              className="rounded-2xl p-8 max-w-3xl w-full border"
               style={{
                 background: colors.surface,
                 borderColor: `${colors.primary}30`,
@@ -116,7 +116,8 @@ export default function Lobby({ onRoomJoined, onLogout }) {
               <h2 className="text-3xl font-orbitron font-black mb-6" style={{ color: colors.text }}>
                 Select a Game
               </h2>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                {/* Scribble */}
                 <button
                   onClick={() => handleCreateRoom('scribble')}
                   className="rounded-xl p-6 hover:scale-105 transition-transform border"
@@ -132,6 +133,7 @@ export default function Lobby({ onRoomJoined, onLogout }) {
                   </p>
                 </button>
 
+                {/* UNO */}
                 <button
                   onClick={() => handleCreateRoom('uno')}
                   className="rounded-xl p-6 hover:scale-105 transition-transform border"
@@ -144,6 +146,22 @@ export default function Lobby({ onRoomJoined, onLogout }) {
                   <h3 className="text-2xl font-orbitron font-bold mb-2 text-white">UNO</h3>
                   <p className="font-poppins text-sm" style={{ color: 'rgba(255, 255, 255, 0.8)' }}>
                     Classic card game action!
+                  </p>
+                </button>
+
+                {/* Truth or Dare - NEW */}
+                <button
+                  onClick={() => handleCreateRoom('truthordare')}
+                  className="rounded-xl p-6 hover:scale-105 transition-transform border"
+                  style={{
+                    background: 'linear-gradient(135deg, #8B5CF6, #EC4899)',
+                    borderColor: 'rgba(255, 255, 255, 0.1)'
+                  }}
+                >
+                  <div className="text-6xl mb-4">🎭</div>
+                  <h3 className="text-2xl font-orbitron font-bold mb-2 text-white">Truth or Dare</h3>
+                  <p className="font-poppins text-sm" style={{ color: 'rgba(255, 255, 255, 0.8)' }}>
+                    Test your courage & honesty!
                   </p>
                 </button>
               </div>
