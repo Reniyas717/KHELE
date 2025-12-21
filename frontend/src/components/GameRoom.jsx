@@ -16,13 +16,18 @@ export default function GameRoom({ roomCode, username, initialRoomData, preSelec
   const isLeavingIntentionally = useRef(false);
   const listenersSetup = useRef(false);
 
+  // Get players array safely
+  const players = room?.players || [];
+  const isHost = players[0]?.username === username || room?.host === username;
+
   console.log('🎮 GameRoom render:', { 
     username, 
     roomCode, 
-    playerCount: room?.players?.length,
+    playerCount: players.length,
     isConnected,
     hasJoined: hasJoined.current,
-    gameType: currentGame
+    gameType: currentGame,
+    gameStarted
   });
 
   // Connect WebSocket when component mounts
@@ -66,7 +71,9 @@ export default function GameRoom({ roomCode, username, initialRoomData, preSelec
       const roomData = data.payload?.room || data.room;
       console.log('📊 Updating room state with:', roomData);
       setRoom(roomData);
-      setCurrentGame(roomData.gameType);
+      if (roomData.gameType) {
+        setCurrentGame(roomData.gameType);
+      }
     });
 
     const unsubPlayerJoined = on('PLAYER_JOINED', (data) => {
@@ -84,11 +91,11 @@ export default function GameRoom({ roomCode, username, initialRoomData, preSelec
     });
 
     const unsubGameStarted = on('GAME_STARTED', (data) => {
-      console.log('🎮 GAME_STARTED event received:', data);
-      const payload = data.payload || data;
+      console.log('🎮 GAME_STARTED event received:', data.payload);
+      const gameType = data.payload?.gameType || data.payload?.game;
+      console.log('🎯 Setting game to:', gameType);
+      setCurrentGame(gameType);
       setGameStarted(true);
-      setInitialGameState(payload.gameState);
-      setCurrentGame(payload.gameType);
     });
 
     const unsubRoomClosed = on('ROOM_CLOSED', (data) => {
@@ -109,17 +116,30 @@ export default function GameRoom({ roomCode, username, initialRoomData, preSelec
     };
   }, [isConnected, on, onLeaveRoom]);
 
+  // Debug logging
+  useEffect(() => {
+    console.log('🔄 GameRoom state update:', { 
+      currentGame, 
+      gameStarted,
+      username, 
+      roomCode, 
+      playersCount: players.length,
+      isHost
+    });
+  }, [currentGame, gameStarted, username, roomCode, players, isHost]);
+
   const handleStartGame = async () => {
     try {
-      console.log('🎮 Starting game via WebSocket...');
+      console.log('🎮 Starting game:', currentGame);
       
-      // For Truth or Dare, we bypass the normal START_GAME flow
+      // For Truth or Dare, start locally and broadcast
       if (currentGame === 'truthordare') {
         setGameStarted(true);
-        setInitialGameState({
-          currentRound: 1,
-          scores: room?.players?.reduce((acc, p) => ({ ...acc, [p.username]: 0 }), {}) || {},
-          settings: { rating: 'PG', rounds: 5 }
+        // Broadcast to all players
+        sendMessage('GAME_STARTED', { 
+          roomCode, 
+          gameType: 'truthordare',
+          game: 'truthordare'
         });
         return;
       }
@@ -148,7 +168,8 @@ export default function GameRoom({ roomCode, username, initialRoomData, preSelec
     onLeaveRoom();
   };
 
-  const handleLeaveTruthOrDare = () => {
+  const handleLeaveGame = () => {
+    console.log('🎮 Leaving game, returning to lobby');
     setGameStarted(false);
     setInitialGameState(null);
   };
@@ -167,44 +188,45 @@ export default function GameRoom({ roomCode, username, initialRoomData, preSelec
     }
   };
 
-  // Show game if started
-  if (gameStarted && currentGame && initialGameState) {
-    if (currentGame === 'scribble') {
-      return (
-        <ScribbleGame
-          roomCode={roomCode}
-          username={username}
-          players={room?.players || []}
-          initialGameState={initialGameState}
-          onLeaveRoom={handleLeaveRoom}
-        />
-      );
-    } else if (currentGame === 'uno') {
-      return (
-        <UNOGame
-          roomCode={roomCode}
-          username={username}
-          players={room?.players || []}
-          initialGameState={initialGameState}
-          onLeaveRoom={handleLeaveRoom}
-        />
-      );
-    } else if (currentGame === 'truthordare') {
-      return (
-        <TruthOrDare
-          roomCode={roomCode}
-          username={username}
-          players={room?.players || []}
-          onLeaveGame={() => {
-            setGameStarted(false);
-            setInitialGameState(null);
-          }}
-        />
-      );
+  // Render the game if started
+  if (gameStarted && currentGame) {
+    console.log('🎮 Rendering game:', currentGame, 'for user:', username);
+    
+    switch (currentGame) {
+      case 'scribble':
+        return (
+          <ScribbleGame
+            roomCode={roomCode}
+            username={username}
+            players={players}
+            onLeaveGame={handleLeaveGame}
+          />
+        );
+      case 'truthordare':
+        return (
+          <TruthOrDare
+            roomCode={roomCode}
+            username={username}
+            players={players}
+            onLeaveGame={handleLeaveGame}
+          />
+        );
+      case 'uno':
+        return (
+          <UNOGame
+            roomCode={roomCode}
+            username={username}
+            players={players}
+            onLeaveGame={handleLeaveGame}
+          />
+        );
+      default:
+        console.log('⚠️ Unknown game type:', currentGame);
+        break;
     }
   }
 
-  console.log('🎨 Rendering lobby with players:', room?.players);
+  console.log('🎨 Rendering lobby with players:', players);
 
   // Lobby view
   return (
@@ -280,10 +302,10 @@ export default function GameRoom({ roomCode, username, initialRoomData, preSelec
           {/* Players */}
           <div className="mb-8">
             <h2 className="text-2xl font-orbitron font-bold mb-4" style={{ color: colors.text }}>
-              Players ({room?.players?.length || 0})
+              Players ({players.length})
             </h2>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {room?.players?.map((player, index) => (
+              {players.map((player, index) => (
                 <div
                   key={player.username || index}
                   className="p-4 rounded-lg border-2"
@@ -316,30 +338,30 @@ export default function GameRoom({ roomCode, username, initialRoomData, preSelec
           </div>
 
           {/* Start Game Button */}
-          {username === room?.host && !gameStarted && (
+          {isHost && !gameStarted && (
             <div className="text-center">
               <button
                 onClick={handleStartGame}
-                disabled={!room?.players || room.players.length < 2}
+                disabled={players.length < 2}
                 className="px-8 py-4 rounded-lg font-raleway font-bold text-lg transition-all hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed"
                 style={{
-                  background: room?.players && room.players.length >= 2
+                  background: players.length >= 2
                     ? `linear-gradient(135deg, ${colors.primary}, ${colors.secondary})`
                     : 'rgba(128, 128, 128, 0.3)',
-                  color: room?.players && room.players.length >= 2 ? '#000' : colors.textSecondary,
-                  boxShadow: room?.players && room.players.length >= 2 
+                  color: players.length >= 2 ? '#000' : colors.textSecondary,
+                  boxShadow: players.length >= 2 
                     ? `0 0 40px ${colors.glow}60` 
                     : 'none'
                 }}
               >
-                {room?.players && room.players.length < 2
+                {players.length < 2
                   ? 'Need at least 2 players'
                   : 'Start Game'}
               </button>
             </div>
           )}
 
-          {username !== room?.host && !gameStarted && (
+          {!isHost && !gameStarted && (
             <div 
               className="text-center p-4 rounded-lg border"
               style={{

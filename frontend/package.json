@@ -21,7 +21,6 @@
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "face-api.js": "^0.22.2",
-    "framer-motion": "^12.23.26",
     "gsap": "^3.14.2",
     "lucide-react": "^0.561.0",
     "postprocessing": "^6.38.0",

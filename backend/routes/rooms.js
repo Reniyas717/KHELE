@@ -329,4 +329,79 @@ router.get('/', async (req, res) => {
   }
 });
 
+// Proxy endpoint for Truth or Dare API (to avoid CORS)
+router.get('/truthordare/:type', async (req, res) => {
+  try {
+    const { type } = req.params;
+    const { rating } = req.query;
+    
+    console.log(`🎭 Fetching ${type} question with rating: ${rating}`);
+    
+    if (!['truth', 'dare'].includes(type)) {
+      return res.status(400).json({ error: 'Invalid type. Must be truth or dare' });
+    }
+    
+    const validRating = rating?.toLowerCase() || 'pg';
+    const url = `https://api.truthordarebot.xyz/v1/${type}?rating=${validRating}`;
+    
+    const response = await fetch(url);
+    
+    if (!response.ok) {
+      throw new Error(`API returned ${response.status}`);
+    }
+    
+    const data = await response.json();
+    res.json(data);
+  } catch (error) {
+    console.error('❌ Error fetching from Truth or Dare API:', error);
+    
+    // Return fallback questions
+    const fallbacks = {
+      truth: {
+        pg: [
+          "What's the most embarrassing thing you've ever done?",
+          "What's your biggest secret?",
+          "Who do you have a crush on?",
+          "What's the worst lie you've ever told?",
+          "What's your most embarrassing moment in school?"
+        ],
+        r: [
+          "What's the most embarrassing thing you've done while drunk?",
+          "Have you ever lied to your significant other?",
+          "What's your biggest fantasy?",
+          "Have you ever cheated in a relationship?",
+          "What's the worst thing you've said about a friend?"
+        ]
+      },
+      dare: {
+        pg: [
+          "Do 20 pushups right now",
+          "Sing your favorite song",
+          "Dance for 30 seconds",
+          "Do your best celebrity impression",
+          "Speak in an accent for the next 3 rounds"
+        ],
+        r: [
+          "Take a shot of hot sauce",
+          "Text your ex right now",
+          "Post an embarrassing photo on social media",
+          "Call someone and sing them a love song",
+          "Do 30 pushups without stopping"
+        ]
+      }
+    };
+    
+    const type = req.params.type;
+    const rating = req.query.rating?.toLowerCase() || 'pg';
+    const questions = fallbacks[type][rating === 'r' ? 'r' : 'pg'];
+    const randomQuestion = questions[Math.floor(Math.random() * questions.length)];
+    
+    res.json({ 
+      question: randomQuestion,
+      type: type.toUpperCase(),
+      rating: rating.toUpperCase()
+    });
+  }
+});
+
 module.exports = router;

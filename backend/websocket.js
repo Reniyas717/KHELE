@@ -111,6 +111,10 @@ function initWebSocket(server) {
             await handleTODNextRound(ws, data.payload);
             break;
             
+          case 'GAME_STARTED':
+            await handleGameStartedBroadcast(ws, data.payload);
+            break;
+            
           default:
             console.log('⚠️ Unknown message type:', data.type);
         }
@@ -399,108 +403,31 @@ async function handleLeaveRoom(ws, payload) {
 
 async function handleStartGame(ws, payload) {
   try {
-    const { roomCode, username } = payload;
+    const { roomCode, gameType } = payload;
     const normalizedCode = roomCode.toUpperCase().trim();
     
-    console.log('🎮 START_GAME:', { roomCode: normalizedCode, username });
-
-    const room = await GameRoom.findOne({ 
-      roomCode: normalizedCode,
-      isActive: true 
-    });
+    console.log('🎮 Starting game:', { roomCode: normalizedCode, gameType });
     
-    if (!room) {
-      ws.send(JSON.stringify({
-        type: 'ERROR',
-        payload: { message: 'Room not found' }
-      }));
-      return;
+    // Update room status in database
+    const room = await GameRoom.findOne({ code: normalizedCode });
+    if (room) {
+      room.status = 'playing';
+      room.currentGame = gameType;
+      await room.save();
     }
-
-    if (room.host !== username) {
-      ws.send(JSON.stringify({
-        type: 'ERROR',
-        payload: { message: 'Only host can start game' }
-      }));
-      return;
-    }
-
-    if (room.players.length < 2) {
-      ws.send(JSON.stringify({
-        type: 'ERROR',
-        payload: { message: 'Need at least 2 players' }
-      }));
-      return;
-    }
-
-    room.status = 'in-progress';
-
-    const playerNames = room.players.map(p => p.username);
     
-    if (room.gameType === 'scribble') {
-      room.gameState = initScribbleGame(playerNames);
-      await room.save();
-      
-      console.log('✅ Scribble game initialized');
-      
-      // Broadcast game started to all
-      broadcastToRoom(normalizedCode, {
-        type: 'GAME_STARTED',
-        payload: {
-          gameType: room.gameType,
-          gameState: room.gameState
-        }
-      });
-      
-      // Send word choices to drawer ONLY
-      setTimeout(() => {
-        const drawerClient = clients.get(room.gameState.currentDrawer);
-        if (drawerClient && drawerClient.ws.readyState === WebSocket.OPEN) {
-          drawerClient.ws.send(JSON.stringify({
-            type: 'WORD_CHOICES',
-            payload: { 
-              wordChoices: room.gameState.wordOptions 
-            }
-          }));
-          console.log(`📝 Sent word choices to drawer: ${room.gameState.currentDrawer}`);
-        }
-      }, 500);
-      
-    } else if (room.gameType === 'uno') {
-      room.gameState = initUNOGame(playerNames);
-      
-      room.gameState.players.forEach((gp, index) => {
-        room.players[index].hand = gp.hand;
-      });
-      
-      await room.save();
-      
-      console.log('✅ UNO game initialized');
-      
-      broadcastToRoom(normalizedCode, {
-        type: 'GAME_STARTED',
-        payload: {
-          gameType: room.gameType,
-          gameState: {
-            ...room.gameState,
-            players: room.gameState.players.map(p => ({
-              name: p.name,
-              score: p.score,
-              hand: []
-            })),
-            deck: []
-          }
-        }
-      });
-    }
-
-    console.log('✅ Game started and broadcasted');
+    // Broadcast to ALL players in the room
+    broadcastToRoom(normalizedCode, {
+      type: 'GAME_STARTED',
+      payload: { 
+        gameType: gameType,
+        game: gameType  // Include both for compatibility
+      }
+    }, null); // null = send to everyone including sender
+    
+    console.log('✅ GAME_STARTED broadcast to all players in room:', normalizedCode);
   } catch (error) {
-    console.error('❌ Error starting game:', error);
-    ws.send(JSON.stringify({
-      type: 'ERROR',
-      payload: { message: 'Failed to start game: ' + error.message }
-    }));
+    console.error('❌ Error in handleStartGame:', error);
   }
 }
 
@@ -1246,7 +1173,7 @@ async function handleTODSettingsUpdate(ws, payload) {
     broadcastToRoom(normalizedCode, {
       type: 'TOD_SETTINGS_UPDATE',
       payload: { settings }
-    });
+    }, null); // Send to ALL players
   } catch (error) {
     console.error('❌ Error in handleTODSettingsUpdate:', error);
   }
@@ -1257,12 +1184,12 @@ async function handleTODGameStart(ws, payload) {
     const { roomCode, settings } = payload;
     const normalizedCode = roomCode.toUpperCase().trim();
     
-    console.log('🎭 TOD_GAME_START:', { roomCode: normalizedCode, settings });
+    console.log('🎮 TOD_GAME_START:', { roomCode: normalizedCode, settings });
     
     broadcastToRoom(normalizedCode, {
       type: 'TOD_GAME_START',
       payload: { settings }
-    });
+    }, null); // Send to ALL players
   } catch (error) {
     console.error('❌ Error in handleTODGameStart:', error);
   }
@@ -1270,15 +1197,19 @@ async function handleTODGameStart(ws, payload) {
 
 async function handleTODSpinWheel(ws, payload) {
   try {
-    const { roomCode, selectedPlayer } = payload;
+    const { roomCode, selectedPlayer, cards } = payload;
     const normalizedCode = roomCode.toUpperCase().trim();
     
-    console.log('🎡 TOD_SPIN_WHEEL:', { roomCode: normalizedCode, selectedPlayer });
+    console.log('🎡 TOD_SPIN_WHEEL:', { roomCode: normalizedCode, selectedPlayer, cardsCount: cards?.length });
+    console.log('📦 Cards being broadcast:', cards);
     
     broadcastToRoom(normalizedCode, {
       type: 'TOD_SPIN_WHEEL',
-      payload: { selectedPlayer }
-    });
+      payload: { 
+        selectedPlayer,
+        cards: cards || []
+      }
+    }, null); // Send to ALL players
   } catch (error) {
     console.error('❌ Error in handleTODSpinWheel:', error);
   }
@@ -1294,7 +1225,7 @@ async function handleTODCardSelected(ws, payload) {
     broadcastToRoom(normalizedCode, {
       type: 'TOD_CARD_SELECTED',
       payload: { card }
-    });
+    }, null); // Send to ALL players
   } catch (error) {
     console.error('❌ Error in handleTODCardSelected:', error);
   }
@@ -1310,7 +1241,7 @@ async function handleTODRatingSubmitted(ws, payload) {
     broadcastToRoom(normalizedCode, {
       type: 'TOD_RATING_SUBMITTED',
       payload: { rater, rating }
-    });
+    }, null); // Send to ALL players
   } catch (error) {
     console.error('❌ Error in handleTODRatingSubmitted:', error);
   }
@@ -1321,14 +1252,36 @@ async function handleTODNextRound(ws, payload) {
     const { roomCode, scores, round } = payload;
     const normalizedCode = roomCode.toUpperCase().trim();
     
-    console.log('➡️ TOD_NEXT_ROUND:', { roomCode: normalizedCode, round });
+    console.log('➡️ TOD_NEXT_ROUND:', { roomCode: normalizedCode, round, scores });
     
     broadcastToRoom(normalizedCode, {
       type: 'TOD_NEXT_ROUND',
       payload: { scores, round }
-    });
+    }, null); // Send to ALL players
   } catch (error) {
     console.error('❌ Error in handleTODNextRound:', error);
+  }
+}
+
+// Add this function after the other handlers:
+
+async function handleGameStartedBroadcast(ws, payload) {
+  try {
+    const { roomCode, gameType, game } = payload;
+    const normalizedCode = roomCode.toUpperCase().trim();
+    
+    console.log('🎮 Broadcasting GAME_STARTED:', { roomCode: normalizedCode, gameType: gameType || game });
+    
+    // Broadcast to ALL players
+    broadcastToRoom(normalizedCode, {
+      type: 'GAME_STARTED',
+      payload: { 
+        gameType: gameType || game,
+        game: gameType || game
+      }
+    }, null); // Send to everyone
+  } catch (error) {
+    console.error('❌ Error in handleGameStartedBroadcast:', error);
   }
 }
 
