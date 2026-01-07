@@ -402,32 +402,93 @@ async function handleLeaveRoom(ws, payload) {
 }
 
 async function handleStartGame(ws, payload) {
+  const { roomCode, username, gameType } = payload;
+  console.log('🎮 Starting game:', { roomCode, username, gameType });
+
   try {
-    const { roomCode, gameType } = payload;
     const normalizedCode = roomCode.toUpperCase().trim();
+    const room = await GameRoom.findOne({ roomCode: normalizedCode, isActive: true });
     
-    console.log('🎮 Starting game:', { roomCode: normalizedCode, gameType });
+    if (!room) {
+      console.error('❌ Room not found:', normalizedCode);
+      ws.send(JSON.stringify({
+        type: 'ERROR',
+        payload: { message: 'Room not found' }
+      }));
+      return;
+    }
+
+    console.log('🔍 Room found:', {
+      host: room.host,
+      requestingUser: username,
+      isHost: room.host === username,
+      players: room.players.map(p => p.username)
+    });
+
+    // Check if user is host
+    if (room.host !== username) {
+      console.error('❌ Not host:', { host: room.host, user: username });
+      ws.send(JSON.stringify({
+        type: 'ERROR',
+        payload: { message: 'Only host can start the game' }
+      }));
+      return;
+    }
+
+    console.log('✅ User is host, initializing game...');
+
+    // Update room status
+    room.status = 'in-progress';
     
-    // Update room status in database
-    const room = await GameRoom.findOne({ code: normalizedCode });
-    if (room) {
-      room.status = 'playing';
-      room.currentGame = gameType;
-      await room.save();
+    // Initialize game based on type
+    let gameState = null;
+    const actualGameType = gameType || room.gameType;
+    
+    console.log('🎯 Initializing game type:', actualGameType);
+    
+    // Get player names array from room
+    const playerNames = room.players.map(p => p.username);
+    console.log('👥 Player names:', playerNames);
+    
+    if (actualGameType === 'scribble') {
+      // Pass roomCode - scribbleGame fetches room internally
+      gameState = await initScribbleGame(normalizedCode);
+    } else if (actualGameType === 'uno') {
+      // Pass player names array to UNO game
+      gameState = await initUNOGame(playerNames);
     }
     
-    // Broadcast to ALL players in the room
+    // Save game state to room
+    if (gameState) {
+      room.gameState = gameState;
+      room.markModified('gameState');
+    }
+    
+    await room.save();
+    
+    console.log('💾 Room status updated to in-progress');
+
+    // Broadcast GAME_STARTED to all players with the gameType
+    console.log('📢 Broadcasting GAME_STARTED to all players...');
     broadcastToRoom(normalizedCode, {
       type: 'GAME_STARTED',
-      payload: { 
-        gameType: gameType,
-        game: gameType  // Include both for compatibility
+      payload: {
+        roomCode: normalizedCode,
+        gameType: actualGameType,
+        game: actualGameType,
+        gameState: gameState || null
       }
-    }, null); // null = send to everyone including sender
-    
-    console.log('✅ GAME_STARTED broadcast to all players in room:', normalizedCode);
+    });
+
+    console.log('✅ GAME_STARTED broadcast complete');
+
   } catch (error) {
     console.error('❌ Error in handleStartGame:', error);
+    console.error('❌ Error stack:', error.stack);
+    ws.send(JSON.stringify({
+      type: 'ERROR',
+      payload: { message: 'Failed to start game: ' + error.message }
+    }));
   }
 }
 

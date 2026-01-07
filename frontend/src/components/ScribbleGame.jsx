@@ -17,6 +17,7 @@ export default function ScribbleGame({ roomCode, username, players, initialGameS
   const { sendMessage, on, isConnected } = useWebSocket();
   const listenersSetup = useRef(false);
   const timerInterval = useRef(null);
+  const initialSetupDone = useRef(false);
 
   const isDrawer = gameState?.currentDrawer === username;
   const currentPlayer = gameState?.players?.find(p => p.username === username);
@@ -32,8 +33,32 @@ export default function ScribbleGame({ roomCode, username, players, initialGameS
     currentWord,
     roundStarted,
     showWordChoices,
-    useCamera
+    useCamera,
+    wordChoices,
+    initialGameState: initialGameState ? 'present' : 'null'
   });
+
+  // Initialize game state from props and show word choices if drawer
+  useEffect(() => {
+    if (initialGameState && !initialSetupDone.current) {
+      console.log('📦 Initializing ScribbleGame with state:', initialGameState);
+      setGameState(initialGameState);
+      
+      // If current user is the drawer, show word choices
+      if (initialGameState.currentDrawer === username && initialGameState.wordOptions?.length > 0) {
+        console.log('🎨 User is drawer, showing word choices:', initialGameState.wordOptions);
+        setWordChoices(initialGameState.wordOptions);
+        setShowWordChoices(true);
+      }
+      
+      initialSetupDone.current = true;
+      
+      setMessages([{ 
+        type: 'system', 
+        text: `Game started! ${initialGameState.currentDrawer} is choosing a word...` 
+      }]);
+    }
+  }, [initialGameState, username]);
 
   // Setup WebSocket listeners
   useEffect(() => {
@@ -48,9 +73,18 @@ export default function ScribbleGame({ roomCode, username, players, initialGameS
     });
 
     const unsubGameStarted = on('GAME_STARTED', (data) => {
-      console.log('🎮 GAME_STARTED received:', data);
+      console.log('🎮 GAME_STARTED received in ScribbleGame:', data);
       const payload = data.payload || data;
-      setGameState(payload.gameState);
+      if (payload.gameState) {
+        setGameState(payload.gameState);
+        
+        // If current user is the drawer, show word choices
+        if (payload.gameState.currentDrawer === username && payload.gameState.wordOptions?.length > 0) {
+          console.log('🎨 User is drawer, showing word choices');
+          setWordChoices(payload.gameState.wordOptions);
+          setShowWordChoices(true);
+        }
+      }
       setRoundStarted(false);
       setMessages([{ type: 'system', text: 'Game started! Waiting for drawer to choose a word...' }]);
     });
@@ -88,10 +122,12 @@ export default function ScribbleGame({ roomCode, username, players, initialGameS
         });
       }, 1000);
       
-      const word = isDrawer ? payload.gameState.currentWord : payload.gameState.currentWord.replace(/./g, '_ ');
+      // Determine if current user is drawer based on updated state
+      const userIsDrawer = payload.gameState.currentDrawer === username;
+      const word = userIsDrawer ? payload.gameState.currentWord : payload.gameState.currentWord.replace(/./g, '_ ');
       setMessages(prev => [...prev, {
         type: 'system',
-        text: isDrawer ? `You are drawing: ${payload.gameState.currentWord}` : `Round started! Guess the word: ${word}`
+        text: userIsDrawer ? `You are drawing: ${payload.gameState.currentWord}` : `Round started! Guess the word: ${word}`
       }]);
     });
 
@@ -158,6 +194,14 @@ export default function ScribbleGame({ roomCode, username, players, initialGameS
       if (timerInterval.current) {
         clearInterval(timerInterval.current);
       }
+      
+      // If current user is the new drawer, show word choices
+      if (payload.gameState.currentDrawer === username && payload.gameState.wordOptions?.length > 0) {
+        console.log('🎨 User is new drawer, showing word choices');
+        setWordChoices(payload.gameState.wordOptions);
+        setShowWordChoices(true);
+      }
+      
       setMessages([{
         type: 'system',
         text: `Next round! ${payload.gameState.currentDrawer} is now drawing...`
@@ -173,7 +217,11 @@ export default function ScribbleGame({ roomCode, username, players, initialGameS
       }
       
       let gameOverMessage = '🎉 Game Over!\n\nFinal Scores:\n';
-      if (payload.gameState?.players) {
+      if (payload.rankings) {
+        payload.rankings.forEach((p, i) => {
+          gameOverMessage += `${i + 1}. ${p.username}: ${p.score} points\n`;
+        });
+      } else if (payload.gameState?.players) {
         payload.gameState.players
           .sort((a, b) => b.score - a.score)
           .forEach((p, i) => {
@@ -216,7 +264,7 @@ export default function ScribbleGame({ roomCode, username, players, initialGameS
       unsubChatMessage?.();
       listenersSetup.current = false;
     };
-  }, [isConnected, on, isDrawer]);
+  }, [isConnected, on, username]);
 
   const handleWordSelect = (word) => {
     console.log('📝 Selecting word:', word);
@@ -298,7 +346,7 @@ export default function ScribbleGame({ roomCode, username, players, initialGameS
         <div className="mb-6 text-center">
           <div className="flex items-center justify-center gap-4">
             <p className="text-2xl font-orbitron font-bold" style={{ color: colors.text }}>
-              Round {gameState?.round || 1} / {gameState?.maxRounds || 6}
+              Round {gameState?.currentRound || 1} / {(gameState?.maxRounds || 3) * (gameState?.players?.length || players.length)}
             </p>
             {timeRemaining !== null && roundStarted && (
               <div 
@@ -334,7 +382,7 @@ export default function ScribbleGame({ roomCode, username, players, initialGameS
             </div>
           ) : (
             <p className="text-lg font-raleway mt-2 animate-pulse" style={{ color: colors.secondary }}>
-              ⏳ Waiting for {gameState?.currentDrawer} to choose a word...
+              ⏳ Waiting for <span style={{ color: colors.primary }}>{gameState?.currentDrawer || 'drawer'}</span> to choose a word...
             </p>
           )}
         </div>
@@ -345,13 +393,14 @@ export default function ScribbleGame({ roomCode, username, players, initialGameS
             Players
           </h2>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            {gameState?.players?.map((player, index) => {
-              const isCurrentDrawer = player.username === gameState.currentDrawer;
+            {(gameState?.players || players)?.map((player, index) => {
+              const playerUsername = player.username;
+              const isCurrentDrawer = playerUsername === gameState?.currentDrawer;
               const hasGuessedPlayer = player.hasGuessed;
               
               return (
                 <div
-                  key={player.username || index}
+                  key={playerUsername || index}
                   className="p-4 rounded-lg border-2 transition-all"
                   style={{
                     background: isCurrentDrawer
@@ -368,7 +417,7 @@ export default function ScribbleGame({ roomCode, username, players, initialGameS
                   }}
                 >
                   <p className="font-raleway font-bold" style={{ color: colors.text }}>
-                    {player.username} {player.username === username && '(You)'}
+                    {playerUsername} {playerUsername === username && '(You)'}
                     {isCurrentDrawer && ' 🎨'}
                     {hasGuessedPlayer && !isCurrentDrawer && ' ✅'}
                   </p>
@@ -425,7 +474,7 @@ export default function ScribbleGame({ roomCode, username, players, initialGameS
                       Waiting for round to start...
                     </p>
                     <p className="text-lg font-poppins mt-2" style={{ color: colors.textSecondary }}>
-                      {isDrawer ? 'Please choose a word from the options' : `${gameState?.currentDrawer} is choosing a word`}
+                      {isDrawer ? 'Please choose a word from the options' : `${gameState?.currentDrawer || 'Drawer'} is choosing a word`}
                     </p>
                   </div>
                 </div>
