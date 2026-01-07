@@ -440,35 +440,69 @@ async function handleStartGame(ws, payload) {
     // Update room status
     room.status = 'in-progress';
     
+    // Get player names array from room
+    const playerNames = room.players.map(p => p.username);
+    console.log('👥 Player names:', playerNames);
+    
     // Initialize game based on type
     let gameState = null;
     const actualGameType = gameType || room.gameType;
     
     console.log('🎯 Initializing game type:', actualGameType);
     
-    // Get player names array from room
-    const playerNames = room.players.map(p => p.username);
-    console.log('👥 Player names:', playerNames);
-    
     if (actualGameType === 'scribble') {
-      // Pass roomCode - scribbleGame fetches room internally
+      // Scribble game handles its own saving
       gameState = await initScribbleGame(normalizedCode);
     } else if (actualGameType === 'uno') {
-      // Pass player names array to UNO game
-      gameState = await initUNOGame(playerNames);
-    }
-    
-    // Save game state to room
-    if (gameState) {
+      // Initialize UNO game with player names
+      gameState = initUNOGame(playerNames);
+      
+      console.log('🎮 UNO game initialized:', {
+        players: gameState.players.map(p => p.username),
+        hands: Object.keys(gameState.hands).map(name => ({ name, cards: gameState.hands[name].length })),
+        currentPlayer: gameState.currentPlayer,
+        currentCard: gameState.discardPile[gameState.discardPile.length - 1],
+        deckSize: gameState.deck.length
+      });
+      
+      // Save game state to room
       room.gameState = gameState;
       room.markModified('gameState');
+      
+      console.log('💾 Saving UNO game state to database...');
+      await room.save();
+      
+      // Verify save
+      const verifyRoom = await GameRoom.findOne({ roomCode: normalizedCode, isActive: true });
+      console.log('✅ Verified save:', {
+        hasGameState: !!verifyRoom.gameState,
+        hasHands: !!verifyRoom.gameState?.hands,
+        playersInHands: verifyRoom.gameState?.hands ? Object.keys(verifyRoom.gameState.hands) : []
+      });
+    } else if (actualGameType === 'truthordare') {
+      // Truth or Dare doesn't need initial game state
+      gameState = null;
     }
     
+    // Final save for room status
     await room.save();
     
     console.log('💾 Room status updated to in-progress');
 
-    // Broadcast GAME_STARTED to all players with the gameType
+    // Convert to frontend format for broadcast
+    let frontendGameState = null;
+    if (actualGameType === 'uno' && gameState) {
+      frontendGameState = convertToFrontendGameState(gameState);
+      console.log('🔄 Converted to frontend format:', {
+        players: frontendGameState.players.map(p => p.name),
+        currentPlayer: frontendGameState.currentPlayer,
+        currentCard: frontendGameState.currentCard
+      });
+    } else {
+      frontendGameState = gameState;
+    }
+
+    // Broadcast GAME_STARTED to all players
     console.log('📢 Broadcasting GAME_STARTED to all players...');
     broadcastToRoom(normalizedCode, {
       type: 'GAME_STARTED',
@@ -476,7 +510,7 @@ async function handleStartGame(ws, payload) {
         roomCode: normalizedCode,
         gameType: actualGameType,
         game: actualGameType,
-        gameState: gameState || null
+        gameState: frontendGameState
       }
     });
 
@@ -901,16 +935,14 @@ async function handleNextRound(ws, payload) {
 
 // UNO game handlers
 async function handlePlayCard(ws, payload) {
+  const { roomCode, username, cardIndex, chosenColor } = payload;
+  console.log('🃏 PLAY_CARD:', { roomCode, username, cardIndex, chosenColor });
+
   try {
-    const { roomCode, username, cardIndex, chosenColor } = payload;
     const normalizedCode = roomCode.toUpperCase().trim();
-    
-    console.log('🎴 handlePlayCard:', { roomCode: normalizedCode, username, cardIndex, chosenColor });
-    
     const room = await GameRoom.findOne({ roomCode: normalizedCode, isActive: true });
     
     if (!room || !room.gameState) {
-      console.error('❌ Room or gameState not found');
       ws.send(JSON.stringify({
         type: 'ERROR',
         payload: { message: 'Game not found' }
@@ -918,171 +950,173 @@ async function handlePlayCard(ws, payload) {
       return;
     }
 
-    const beforeFinished = room.gameState.players.filter(p => p.finished).length;
-    console.log('📊 BEFORE PLAY:', {
-      currentPlayer: room.gameState.currentPlayer,
-      finishedPlayers: beforeFinished,
-      totalPlayers: room.gameState.players.length,
-      playerStates: room.gameState.players.map(p => ({ 
-        name: p.name, 
-        cards: p.hand?.length || 0, 
-        finished: p.finished 
-      }))
-    });
-
-    const result = playCard(room.gameState, username, cardIndex, chosenColor);
+    const gameState = room.gameState;
     
-    if (result.success) {
-      room.gameState = result.gameState;
-      
-      const afterFinished = room.gameState.players.filter(p => p.finished).length;
-      const remainingActive = room.gameState.players.filter(p => !p.finished).length;
-      
-      console.log('📊 AFTER PLAY:', {
-        currentPlayer: room.gameState.currentPlayer,
-        finishedPlayers: afterFinished,
-        remainingActive: room.gameState.players.filter(p => !p.finished).length,
-        totalPlayers: room.gameState.players.length,
-        playerStates: room.gameState.players.map(p => ({ 
-          name: p.name, 
-          cards: p.hand?.length || 0, 
-          finished: p.finished 
-        }))
-      });
-      
-      if (remainingActive <= 1 && !result.gameOver) {
-        console.log('🚨 FORCE GAME OVER - Only 1 or 0 players remaining!');
-        
-        room.gameState.players.forEach(p => {
-          if (!p.finished) {
-            p.finished = true;
-            p.position = room.gameState.players.length;
-            console.log(`🏅 Force finishing ${p.name} at position ${p.position}`);
-          }
-        });
-        
-        const rankings = room.gameState.players
-          .sort((a, b) => a.position - b.position)
-          .map(p => ({
-            name: p.name,
-            position: p.position,
-            points: p.score
-          }));
-        
-        result.gameOver = true;
-        result.rankings = rankings;
-        
-        console.log('🏆 FORCED RANKINGS:', rankings);
-      }
-      
-      room.gameState.players.forEach((gamePlayer) => {
-        const roomPlayer = room.players.find(p => p.username === gamePlayer.name);
-        if (roomPlayer) {
-          roomPlayer.hand = gamePlayer.hand;
-        }
-      });
-      
-      room.markModified('gameState');
-      room.markModified('players');
-      await room.save();
-      
-      console.log('💾 Game state saved to database');
-      
-      const broadcastGameState = {
-        ...result.gameState,
-        players: result.gameState.players.map(p => ({
-          name: p.name,
-          score: p.score,
-          cardCount: p.hand.length,
-          finished: p.finished,
-          position: p.position,
-          hand: []
-        })),
-        deck: []
-      };
-      
-      broadcastToRoom(normalizedCode, {
-        type: 'CARD_PLAYED',
-        payload: { 
-          username,
-          gameState: broadcastGameState
-        }
-      });
-      
-      if (result.autoDrawn && !result.gameOver) {
-        setTimeout(() => {
-          broadcastToRoom(normalizedCode, {
-            type: 'AUTO_DRAWN',
-            payload: {
-              playerName: result.autoDrawn.playerName,
-              cardsDrawn: result.autoDrawn.cardsDrawn,
-              gameState: broadcastGameState
-            }
-          });
-        }, 500);
-      }
-      
-      if (result.playerFinished && !result.gameOver) {
-        console.log(`🎯 Player finished but game continues: ${result.playerFinished}`);
-        broadcastToRoom(normalizedCode, {
-          type: 'PLAYER_FINISHED',
-          payload: {
-            playerName: result.playerFinished,
-            position: result.finishedPosition,
-            points: result.pointsEarned,
-            remainingPlayers: result.remainingPlayers
-          }
-        });
-      }
-      
-      if (result.gameOver) {
-        console.log('🏁 GAME OVER! Broadcasting final rankings...');
-        console.log('🏆 Rankings:', result.rankings);
-        
-        setTimeout(() => {
-          broadcastToRoom(normalizedCode, {
-            type: 'GAME_OVER',
-            payload: {
-              rankings: result.rankings,
-              finalScores: result.rankings.map(r => ({
-                name: r.name,
-                points: r.points
-              }))
-            }
-          });
-          
-          room.status = 'finished';
-          room.save();
-          console.log('✅ Game over broadcast sent and room marked as finished');
-        }, 1000);
-      }
-    } else {
-      console.error('❌ Card play failed:', result.message);
+    // Check if it's player's turn
+    if (gameState.currentPlayer !== username) {
       ws.send(JSON.stringify({
         type: 'ERROR',
-        payload: { message: result.message }
+        payload: { message: `Not your turn. Current player: ${gameState.currentPlayer}` }
       }));
+      return;
     }
+
+    // Get the card from player's hand
+    const hand = gameState.hands[username];
+    if (!hand || cardIndex < 0 || cardIndex >= hand.length) {
+      ws.send(JSON.stringify({
+        type: 'ERROR',
+        payload: { message: 'Invalid card index' }
+      }));
+      return;
+    }
+
+    const card = hand[cardIndex];
+    console.log('🎴 Playing card:', card);
+
+    // Check if card can be played
+    const currentCard = gameState.discardPile[gameState.discardPile.length - 1];
+    const currentColor = gameState.currentColor;
+
+    const canPlay = 
+      card.color === 'wild' ||
+      card.color === currentColor ||
+      card.value === currentCard.value;
+
+    if (!canPlay) {
+      ws.send(JSON.stringify({
+        type: 'ERROR',
+        payload: { message: 'Cannot play this card' }
+      }));
+      return;
+    }
+
+    // Remove card from hand
+    hand.splice(cardIndex, 1);
+
+    // Add card to discard pile
+    gameState.discardPile.push(card);
+
+    // Update current color
+    if (card.color === 'wild') {
+      gameState.currentColor = chosenColor || 'red';
+    } else {
+      gameState.currentColor = card.color;
+    }
+    gameState.currentValue = card.value;
+
+    // Update player's card count
+    const playerState = gameState.players.find(p => p.username === username);
+    if (playerState) {
+      playerState.cardCount = hand.length;
+    }
+
+    // Check for win
+    if (hand.length === 0) {
+      gameState.gameOver = true;
+      gameState.winner = username;
+      
+      // Broadcast game over
+      const frontendGameState = convertToFrontendGameState(gameState);
+      broadcastToRoom(normalizedCode, {
+        type: 'GAME_OVER',
+        payload: {
+          winner: username,
+          rankings: [{ name: username, position: 1, points: 100 }],
+          gameState: frontendGameState
+        }
+      });
+      
+      room.gameState = gameState;
+      room.markModified('gameState');
+      await room.save();
+      return;
+    }
+
+    // Handle action cards
+    let skipNext = false;
+    let drawAmount = 0;
+
+    if (card.value === 'skip') {
+      skipNext = true;
+    } else if (card.value === 'reverse') {
+      gameState.direction *= -1;
+      if (gameState.players.length === 2) {
+        skipNext = true;
+      }
+    } else if (card.value === 'draw2') {
+      drawAmount = 2;
+      skipNext = true;
+    } else if (card.value === 'wild_draw4') {
+      drawAmount = 4;
+      skipNext = true;
+    }
+
+    // Calculate next player
+    let nextIndex = (gameState.currentPlayerIndex + gameState.direction + gameState.players.length) % gameState.players.length;
+
+    // Handle draw cards
+    if (drawAmount > 0) {
+      const nextPlayer = gameState.players[nextIndex].username;
+      for (let i = 0; i < drawAmount; i++) {
+        if (gameState.deck.length === 0) {
+          // Reshuffle discard pile
+          const topCard = gameState.discardPile.pop();
+          gameState.deck = shuffleDeck(gameState.discardPile);
+          gameState.discardPile = [topCard];
+        }
+        if (gameState.deck.length > 0) {
+          gameState.hands[nextPlayer].push(gameState.deck.pop());
+        }
+      }
+      gameState.players.find(p => p.username === nextPlayer).cardCount = gameState.hands[nextPlayer].length;
+      console.log(`📤 ${nextPlayer} drew ${drawAmount} cards`);
+    }
+
+    // Skip next player if needed
+    if (skipNext) {
+      nextIndex = (nextIndex + gameState.direction + gameState.players.length) % gameState.players.length;
+    }
+
+    gameState.currentPlayerIndex = nextIndex;
+    gameState.currentPlayer = gameState.players[nextIndex].username;
+
+    // Save game state
+    room.gameState = gameState;
+    room.markModified('gameState');
+    await room.save();
+
+    // Convert to frontend format and broadcast
+    const frontendGameState = convertToFrontendGameState(gameState);
+
+    console.log('📢 Broadcasting CARD_PLAYED');
+    broadcastToRoom(normalizedCode, {
+      type: 'CARD_PLAYED',
+      payload: {
+        player: username,
+        card,
+        gameState: frontendGameState
+      }
+    });
+
   } catch (error) {
     console.error('❌ Error in handlePlayCard:', error);
     ws.send(JSON.stringify({
       type: 'ERROR',
-      payload: { message: error.message }
+      payload: { message: 'Failed to play card' }
     }));
   }
 }
 
 async function handleDrawCardAction(ws, payload) {
+  const { roomCode, username } = payload;
+  console.log('📥 DRAW_CARD:', { roomCode, username });
+
   try {
-    const { roomCode, username } = payload;
     const normalizedCode = roomCode.toUpperCase().trim();
-    
-    console.log('🎴 handleDrawCardAction:', { roomCode: normalizedCode, username });
-    
     const room = await GameRoom.findOne({ roomCode: normalizedCode, isActive: true });
     
     if (!room || !room.gameState) {
-      console.error('❌ Room or gameState not found');
       ws.send(JSON.stringify({
         type: 'ERROR',
         payload: { message: 'Game not found' }
@@ -1090,103 +1124,123 @@ async function handleDrawCardAction(ws, payload) {
       return;
     }
 
-    console.log('📊 Before draw - Current player:', room.gameState.currentPlayer);
-
-    const result = drawCard(room.gameState, username);
+    const gameState = room.gameState;
     
-    if (result.success) {
-      room.gameState = result.gameState;
-      
-      console.log('📊 After draw - Current player:', room.gameState.currentPlayer);
-      console.log('📊 After draw - Players:', room.gameState.players.map(p => ({ 
-        name: p.name, 
-        cards: p.hand.length 
-      })));
-      
-      room.gameState.players.forEach((gamePlayer) => {
-        const roomPlayer = room.players.find(p => p.username === gamePlayer.name);
-        if (roomPlayer) {
-          roomPlayer.hand = gamePlayer.hand;
-        }
-      });
-      
-      room.markModified('gameState');
-      room.markModified('players');
-      
-      await room.save();
-      
-      console.log('💾 Game state saved to database');
-      
-      const verifyRoom = await GameRoom.findOne({ roomCode: normalizedCode, isActive: true });
-      console.log('✅ Verified saved state - Current player:', verifyRoom.gameState.currentPlayer);
-      
-      console.log('✅ Card drawn successfully, broadcasting...');
-      
-      const broadcastGameState = {
-        ...result.gameState,
-        players: result.gameState.players.map(p => ({
-          name: p.name,
-          score: p.score,
-          cardCount: p.hand.length,
-          hand: []
-        })),
-        deck: []
-      };
-      
-      broadcastToRoom(normalizedCode, {
-        type: 'CARD_DRAWN',
-        payload: { 
-          username,
-          gameState: broadcastGameState
-        }
-      });
-    } else {
-      console.error('❌ Card draw failed:', result.message);
+    // Check if it's player's turn
+    if (gameState.currentPlayer !== username) {
       ws.send(JSON.stringify({
         type: 'ERROR',
-        payload: { message: result.message }
+        payload: { message: `Not your turn. Current player: ${gameState.currentPlayer}` }
       }));
+      return;
     }
+
+    // Reshuffle if deck is empty
+    if (gameState.deck.length === 0) {
+      const topCard = gameState.discardPile.pop();
+      gameState.deck = shuffleDeck(gameState.discardPile);
+      gameState.discardPile = [topCard];
+      console.log('🔄 Reshuffled discard pile into deck');
+    }
+
+    if (gameState.deck.length === 0) {
+      ws.send(JSON.stringify({
+        type: 'ERROR',
+        payload: { message: 'No cards left in deck' }
+      }));
+      return;
+    }
+
+    // Draw card
+    const card = gameState.deck.pop();
+    gameState.hands[username].push(card);
+
+    // Update card count
+    const playerState = gameState.players.find(p => p.username === username);
+    if (playerState) {
+      playerState.cardCount = gameState.hands[username].length;
+      playerState.hasCalledUno = false;
+    }
+
+    // Move to next player
+    const nextIndex = (gameState.currentPlayerIndex + gameState.direction + gameState.players.length) % gameState.players.length;
+    gameState.currentPlayerIndex = nextIndex;
+    gameState.currentPlayer = gameState.players[nextIndex].username;
+
+    // Save game state
+    room.gameState = gameState;
+    room.markModified('gameState');
+    await room.save();
+
+    // Convert to frontend format
+    const frontendGameState = convertToFrontendGameState(gameState);
+
+    console.log(`✅ ${username} drew a card, next player: ${gameState.currentPlayer}`);
+
+    // Broadcast to all players
+    broadcastToRoom(normalizedCode, {
+      type: 'CARD_DRAWN',
+      payload: {
+        player: username,
+        gameState: frontendGameState
+      }
+    });
+
   } catch (error) {
-    console.error('❌ Error in handleDrawCardAction:', error);
+    console.error('❌ Error in handleDrawCard:', error);
     ws.send(JSON.stringify({
       type: 'ERROR',
-      payload: { message: error.message }
+      payload: { message: 'Failed to draw card' }
     }));
   }
 }
 
+// Add this function after handleDrawCardAction
+
 async function handleRequestHand(ws, payload) {
+  const { roomCode, username } = payload;
+  console.log('🤚 REQUEST_HAND:', { roomCode, username });
+
   try {
-    const { roomCode, username } = payload;
     const normalizedCode = roomCode.toUpperCase().trim();
+    const room = await GameRoom.findOne({ roomCode: normalizedCode, isActive: true });
     
-    console.log(`🤚 REQUEST_HAND: ${username} in ${normalizedCode}`);
-    
-    const room = await GameRoom.findOne({ 
-      roomCode: normalizedCode,
-      isActive: true 
-    });
-    
-    if (!room || !room.gameState) {
-      console.error('❌ Room or gameState not found');
+    if (!room) {
+      console.error('❌ Room not found:', normalizedCode);
       ws.send(JSON.stringify({
         type: 'ERROR',
-        payload: { message: 'Game not found' }
+        payload: { message: 'Room not found' }
       }));
       return;
     }
 
-    console.log('🔍 Game state current player:', room.gameState.currentPlayer);
-    console.log('🔍 Game state players:', room.gameState.players?.map(p => ({ 
-      name: p.name, 
-      cards: p.hand?.length || 0 
-    })));
+    if (!room.gameState) {
+      console.error('❌ No game state found');
+      ws.send(JSON.stringify({
+        type: 'ERROR',
+        payload: { message: 'Game not started' }
+      }));
+      return;
+    }
+
+    const gameState = room.gameState;
     
-    const player = room.gameState.players?.find(p => p.name === username);
+    // Check if hands exist
+    if (!gameState.hands) {
+      console.error('❌ No hands in game state');
+      ws.send(JSON.stringify({
+        type: 'ERROR',
+        payload: { message: 'No hands dealt yet' }
+      }));
+      return;
+    }
+
+    // Get player's hand
+    const hand = gameState.hands[username];
     
-    if (!player) {
-      console.error('❌ Player not found in game state:', username);
+    if (!hand) {
+      console.error('❌ Player not found in game:', username);
+      console.log('📋 Available players in hands:', Object.keys(gameState.hands));
       ws.send(JSON.stringify({
         type: 'ERROR',
         payload: { message: 'Player not found in game' }
@@ -1194,30 +1248,59 @@ async function handleRequestHand(ws, payload) {
       return;
     }
 
-    if (!player.hand) {
-      console.error('❌ Player hand is null/undefined');
-      ws.send(JSON.stringify({
-        type: 'ERROR',
-        payload: { message: 'Player hand not initialized' }
-      }));
-      return;
-    }
+    console.log(`✅ Sending hand to ${username}: ${hand.length} cards`);
 
-    console.log(`✅ Sending ${player.hand.length} cards to ${username}`);
+    // Convert gameState to frontend format
+    const frontendGameState = convertToFrontendGameState(gameState);
 
     ws.send(JSON.stringify({
       type: 'HAND_UPDATE',
       payload: {
-        hand: player.hand
+        hand,
+        gameState: frontendGameState
       }
     }));
+
   } catch (error) {
     console.error('❌ Error in handleRequestHand:', error);
     ws.send(JSON.stringify({
       type: 'ERROR',
-      payload: { message: error.message }
+      payload: { message: 'Failed to get hand' }
     }));
   }
+}
+
+// Helper function to convert backend gameState to frontend format
+function convertToFrontendGameState(gameState) {
+  return {
+    players: gameState.players.map(p => ({
+      name: p.username,
+      cardCount: p.cardCount,
+      hasCalledUno: p.hasCalledUno,
+      score: p.score || 0,
+      finished: p.finished || false,
+      position: p.position || null
+    })),
+    currentPlayer: gameState.currentPlayer,
+    currentCard: gameState.discardPile?.[gameState.discardPile.length - 1] || null,
+    currentColor: gameState.currentColor,
+    currentValue: gameState.currentValue,
+    direction: gameState.direction,
+    drawCount: gameState.drawCount || 0,
+    deck: { length: gameState.deck?.length || 0 },
+    gameOver: gameState.gameOver,
+    winner: gameState.winner
+  };
+}
+
+// Helper function to shuffle deck
+function shuffleDeck(deck) {
+  const shuffled = [...deck];
+  for (let i = shuffled.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+  }
+  return shuffled;
 }
 
 // ===========================================
