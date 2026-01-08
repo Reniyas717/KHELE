@@ -1,858 +1,488 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTheme } from '../context/ThemeContext';
-import { FullScreenScrollFX } from '../components/ui/full-screen-scroll-fx';
-import { GridScan } from '../components/ui/GridScan';
+import PixelSnow from '../components/ui/PixelSnow';
+import {
+  IoFlashSharp,
+  IoGlobeOutline,
+  IoTrophySharp,
+  IoSunnyOutline,
+  IoMoonOutline,
+  IoArrowForward,
+  IoGameController,
+  IoPeopleSharp,
+  IoBrushSharp,
+  IoColorPaletteSharp,
+  IoSparklesSharp,
+  IoTimerOutline,
+  IoHomeSharp,
+  IoRibbonSharp,
+  IoSpeedometerSharp,
+  IoShieldCheckmarkSharp,
+  IoEarthSharp,
+  IoLocateSharp,
+  IoChatbubblesSharp,
+  IoStarSharp,
+  IoRocketSharp,
+  IoDocumentTextSharp,
+  IoCheckmarkCircleSharp
+} from 'react-icons/io5';
+import { FaIdCard } from 'react-icons/fa6';
+import { MdSmartToy } from 'react-icons/md';
 
 const Landing = () => {
   const [showIntro, setShowIntro] = useState(true);
+  const [currentWord, setCurrentWord] = useState(0);
+  const [scrollY, setScrollY] = useState(0);
   const navigate = useNavigate();
   const { theme, toggleTheme, colors } = useTheme();
-  
-  const particleCanvasRef = useRef(null);
-  const particlesRef = useRef([]);
 
-  // Particle class
-  class Particle {
-    constructor() {
-      this.pos = { x: 0, y: 0 };
-      this.vel = { x: 0, y: 0 };
-      this.acc = { x: 0, y: 0 };
-      this.target = { x: 0, y: 0 };
-      this.maxSpeed = Math.random() * 4 + 3;
-      this.maxForce = this.maxSpeed * 0.05;
-      this.particleSize = Math.random() * 4 + 3;
-      this.color = { r: 0, g: 0, b: 0 };
-      this.targetColor = { r: 0, g: 0, b: 0 };
-      this.colorWeight = 0;
-      this.colorBlendRate = Math.random() * 0.02 + 0.01;
-      this.isKilled = false;
-    }
+  const introWords = ['KHELE', 'Where Gaming', 'Meets Excellence'];
 
-    move() {
-      const distance = Math.sqrt(
-        Math.pow(this.pos.x - this.target.x, 2) + 
-        Math.pow(this.pos.y - this.target.y, 2)
-      );
-      
-      let proximityMult = distance < 100 ? distance / 100 : 1;
-      
-      const towardsTarget = {
-        x: this.target.x - this.pos.x,
-        y: this.target.y - this.pos.y
-      };
-      
-      const magnitude = Math.sqrt(towardsTarget.x ** 2 + towardsTarget.y ** 2);
-      if (magnitude > 0) {
-        towardsTarget.x = (towardsTarget.x / magnitude) * this.maxSpeed * proximityMult;
-        towardsTarget.y = (towardsTarget.y / magnitude) * this.maxSpeed * proximityMult;
-      }
-      
-      const steer = {
-        x: towardsTarget.x - this.vel.x,
-        y: towardsTarget.y - this.vel.y
-      };
-      
-      const steerMag = Math.sqrt(steer.x ** 2 + steer.y ** 2);
-      if (steerMag > 0) {
-        steer.x = (steer.x / steerMag) * this.maxForce;
-        steer.y = (steer.y / steerMag) * this.maxForce;
-      }
-      
-      this.acc.x += steer.x;
-      this.acc.y += steer.y;
-      this.vel.x += this.acc.x;
-      this.vel.y += this.acc.y;
-      this.pos.x += this.vel.x;
-      this.pos.y += this.vel.y;
-      this.acc.x = 0;
-      this.acc.y = 0;
-    }
-
-    draw(ctx) {
-      if (this.colorWeight < 1.0) {
-        this.colorWeight = Math.min(this.colorWeight + this.colorBlendRate, 1.0);
-      }
-      
-      const currentColor = {
-        r: Math.round(this.color.r + (this.targetColor.r - this.color.r) * this.colorWeight),
-        g: Math.round(this.color.g + (this.targetColor.g - this.color.g) * this.colorWeight),
-        b: Math.round(this.color.b + (this.targetColor.b - this.color.b) * this.colorWeight)
-      };
-      
-      ctx.fillStyle = `rgb(${currentColor.r}, ${currentColor.g}, ${currentColor.b})`;
-      ctx.beginPath();
-      ctx.arc(this.pos.x, this.pos.y, this.particleSize / 2, 0, Math.PI * 2);
-      ctx.fill();
-    }
-
-    kill(width, height) {
-      if (!this.isKilled) {
-        const angle = Math.random() * Math.PI * 2;
-        const mag = (width + height) / 2;
-        this.target.x = width / 2 + Math.cos(angle) * mag;
-        this.target.y = height / 2 + Math.sin(angle) * mag;
-        this.color = {
-          r: this.color.r + (this.targetColor.r - this.color.r) * this.colorWeight,
-          g: this.color.g + (this.targetColor.g - this.color.g) * this.colorWeight,
-          b: this.color.b + (this.targetColor.b - this.color.b) * this.colorWeight
-        };
-        this.targetColor = { r: 0, g: 0, b: 0 };
-        this.colorWeight = 0;
-        this.isKilled = true;
-      }
-    }
-  }
-
-  // Initialize Particle Text
+  // Parallax scroll effect
   useEffect(() => {
-    if (!showIntro) return;
-    
-    const canvas = particleCanvasRef.current;
-    if (!canvas) return;
-    
-    const ctx = canvas.getContext('2d');
-    canvas.width = window.innerWidth;
-    canvas.height = window.innerHeight;
-    
-    const words = ['KHELE', 'Where Gaming', 'Meets Excellence'];
-    let wordIndex = 0;
-    let animationFrame;
-    let wordChangeCount = 0;
-    
-    const hexToRgb = (hex) => {
-      const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
-      return result ? {
-        r: parseInt(result[1], 16),
-        g: parseInt(result[2], 16),
-        b: parseInt(result[3], 16)
-      } : { r: 0, g: 255, b: 136 };
-    };
-    
-    const generateText = (word) => {
-      const offscreen = document.createElement('canvas');
-      offscreen.width = canvas.width;
-      offscreen.height = canvas.height;
-      const offCtx = offscreen.getContext('2d');
-      
-      offCtx.fillStyle = 'white';
-      offCtx.font = 'bold 120px Orbitron, sans-serif';
-      offCtx.textAlign = 'center';
-      offCtx.textBaseline = 'middle';
-      offCtx.fillText(word, canvas.width / 2, canvas.height / 2);
-      
-      const imageData = offCtx.getImageData(0, 0, canvas.width, canvas.height);
-      const pixels = imageData.data;
-      
-      const newColor = hexToRgb(colors.primary);
-      const particles = particlesRef.current;
-      let particleIndex = 0;
-      
-      const coords = [];
-      for (let i = 0; i < pixels.length; i += 24) {
-        coords.push(i);
-      }
-      
-      coords.sort(() => Math.random() - 0.5);
-      
-      for (const coordIndex of coords) {
-        const alpha = pixels[coordIndex + 3];
-        if (alpha > 0) {
-          const x = (coordIndex / 4) % canvas.width;
-          const y = Math.floor(coordIndex / 4 / canvas.width);
-          
-          let particle;
-          if (particleIndex < particles.length) {
-            particle = particles[particleIndex];
-            particle.isKilled = false;
-            particleIndex++;
-          } else {
-            particle = new Particle();
-            const angle = Math.random() * Math.PI * 2;
-            const mag = (canvas.width + canvas.height) / 2;
-            particle.pos.x = canvas.width / 2 + Math.cos(angle) * mag;
-            particle.pos.y = canvas.height / 2 + Math.sin(angle) * mag;
-            particles.push(particle);
-          }
-          
-          particle.color = {
-            r: particle.color.r + (particle.targetColor.r - particle.color.r) * particle.colorWeight,
-            g: particle.color.g + (particle.targetColor.g - particle.color.g) * particle.colorWeight,
-            b: particle.color.b + (particle.targetColor.b - particle.color.b) * particle.colorWeight
-          };
-          particle.targetColor = newColor;
-          particle.colorWeight = 0;
-          particle.target.x = x;
-          particle.target.y = y;
-        }
-      }
-      
-      for (let i = particleIndex; i < particles.length; i++) {
-        particles[i].kill(canvas.width, canvas.height);
-      }
+    const handleScroll = () => {
+      setScrollY(window.scrollY);
     };
 
-    const killAllParticles = () => {
-      const particles = particlesRef.current;
-      for (let i = 0; i < particles.length; i++) {
-        particles[i].kill(canvas.width, canvas.height);
-      }
-    };
-    
-    const animate = () => {
-      ctx.fillStyle = 'rgba(0, 0, 0, 0.1)';
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
-      
-      const particles = particlesRef.current;
-      for (let i = particles.length - 1; i >= 0; i--) {
-        const particle = particles[i];
-        particle.move();
-        particle.draw(ctx);
-        
-        if (particle.isKilled) {
-          if (
-            particle.pos.x < -50 || particle.pos.x > canvas.width + 50 ||
-            particle.pos.y < -50 || particle.pos.y > canvas.height + 50
-          ) {
-            particles.splice(i, 1);
-          }
-        }
-      }
-      
-      animationFrame = requestAnimationFrame(animate);
-    };
-    
-    generateText(words[wordIndex]);
-    animate();
-    
-    const wordInterval = setInterval(() => {
-      wordChangeCount++;
-      
-      if (wordChangeCount >= words.length) {
-        killAllParticles();
-        clearInterval(wordInterval);
-        return;
-      }
-      
-      wordIndex = (wordIndex + 1) % words.length;
-      generateText(words[wordIndex]);
-    }, 2500);
-    
-    return () => {
-      cancelAnimationFrame(animationFrame);
-      clearInterval(wordInterval);
-    };
-  }, [showIntro, colors.primary]);
-
-  useEffect(() => {
-    const timer = setTimeout(() => setShowIntro(false), 9000);
-    return () => clearTimeout(timer);
+    window.addEventListener('scroll', handleScroll, { passive: true });
+    return () => window.removeEventListener('scroll', handleScroll);
   }, []);
 
-  // PROPERLY SIZED SECTIONS
-  const sections = [
-    {
-      leftLabel: "GAMING",
-      title: (
-        <div className="flex flex-col items-center justify-center w-full h-full px-4">
-          {/* Hero Badge */}
-          <div
-            className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full mb-4 border"
-            style={{
-              background: `rgba(0, 0, 0, 0.6)`,
-              borderColor: colors.primary,
-              backdropFilter: 'blur(10px)'
-            }}
-          >
-            <span className="text-sm">⚡</span>
-            <span className="font-poppins text-[10px] font-bold tracking-wider" style={{ color: colors.primary }}>
-              NEXT-GEN PLATFORM
-            </span>
-          </div>
+  useEffect(() => {
+    if (!showIntro) return;
 
-          {/* Main Title */}
-          <h1
-            className="font-orbitron text-5xl md:text-6xl font-black mb-3 text-center leading-none"
-            style={{
-              background: `linear-gradient(135deg, ${colors.primary}, ${colors.secondary})`,
-              WebkitBackgroundClip: 'text',
-              WebkitTextFillColor: 'transparent',
-              textShadow: `0 0 80px ${colors.glow}80`
-            }}
-          >
-            KHELE
-          </h1>
+    const wordInterval = setInterval(() => {
+      setCurrentWord(prev => {
+        if (prev >= introWords.length - 1) {
+          clearInterval(wordInterval);
+          setTimeout(() => setShowIntro(false), 600);
+          return prev;
+        }
+        return prev + 1;
+      });
+    }, 700);
 
-          {/* Subtitle */}
-          <p 
-            className="font-poppins text-base md:text-lg mb-6 font-light text-center"
-            style={{ color: colors.text }}
-          >
-            Where Champions Are Born
-          </p>
+    return () => clearInterval(wordInterval);
+  }, [showIntro]);
 
-          {/* Quick Stats */}
-          <div className="flex gap-4 mb-6">
-            {[
-              { icon: '⚡', label: 'Lightning Fast' },
-              { icon: '🌍', label: 'Global Play' },
-              { icon: '🏆', label: 'Real Rewards' }
-            ].map((item, i) => (
-              <div
-                key={i}
-                className="flex flex-col items-center gap-1.5 px-3 py-2 rounded-lg border"
-                style={{
-                  background: 'rgba(0, 0, 0, 0.5)',
-                  borderColor: `${colors.primary}40`,
-                  backdropFilter: 'blur(10px)'
-                }}
-              >
-                <span className="text-xl">{item.icon}</span>
-                <span className="font-raleway text-[10px] font-semibold" style={{ color: colors.primary }}>
-                  {item.label}
-                </span>
-              </div>
-            ))}
-          </div>
-
-          {/* CTA Button */}
-          <button
-            onClick={() => navigate('/login')}
-            className="group relative font-raleway font-bold px-8 py-2.5 rounded-lg text-sm overflow-hidden transition-all hover:scale-105"
-            style={{
-              background: `linear-gradient(135deg, ${colors.primary}, ${colors.secondary})`,
-              color: '#000',
-              boxShadow: `0 0 40px ${colors.glow}60`
-            }}
-          >
-            <span className="relative z-10 flex items-center gap-2">
-              Start Playing
-              <span className="group-hover:translate-x-1 transition-transform">→</span>
-            </span>
-          </button>
-        </div>
-      ),
-      rightLabel: "EXCELLENCE",
-    },
-
-    {
-      leftLabel: "CLASSIC",
-      title: (
-        <div className="flex flex-col items-center justify-center w-full h-full px-4">
-          {/* Game Icon */}
-          <div
-            className="text-5xl mb-4 p-4 rounded-2xl border"
-            style={{
-              background: 'rgba(0, 0, 0, 0.6)',
-              borderColor: `${colors.primary}40`,
-              backdropFilter: 'blur(10px)',
-              boxShadow: `0 0 40px ${colors.glow}40`
-            }}
-          >
-            🎴
-          </div>
-
-          {/* Badge */}
-          <div
-            className="inline-block px-3 py-0.5 rounded-full mb-3 border text-[10px] font-bold"
-            style={{
-              background: 'rgba(0, 0, 0, 0.6)',
-              borderColor: colors.primary,
-              color: colors.primary
-            }}
-          >
-            MOST POPULAR
-          </div>
-
-          {/* Title */}
-          <h2 
-            className="font-orbitron text-4xl md:text-5xl font-black mb-3 text-center"
-            style={{ color: colors.text }}
-          >
-            UNO REVOLUTION
-          </h2>
-
-          <p className="font-poppins text-sm mb-6 text-center max-w-xl" style={{ color: colors.textSecondary }}>
-            Timeless card game reimagined with stunning 3D animations
-          </p>
-
-          {/* Feature Grid */}
-          <div className="grid grid-cols-2 gap-3 mb-6 max-w-lg">
-            {[
-              { icon: '👥', text: 'Up to 8 Players' },
-              { icon: '⚡', text: 'Power Cards' },
-              { icon: '🎨', text: 'Custom Decks' },
-              { icon: '🏆', text: 'Tournaments' }
-            ].map((feat, i) => (
-              <div
-                key={i}
-                className="flex items-center gap-2 px-3 py-2 rounded-lg border"
-                style={{
-                  background: 'rgba(0, 0, 0, 0.5)',
-                  borderColor: `${colors.primary}30`,
-                  backdropFilter: 'blur(10px)'
-                }}
-              >
-                <span className="text-xl">{feat.icon}</span>
-                <span className="font-raleway text-xs font-semibold" style={{ color: colors.text }}>
-                  {feat.text}
-                </span>
-              </div>
-            ))}
-          </div>
-
-          <button
-            onClick={() => navigate('/login')}
-            className="font-raleway font-bold px-8 py-2.5 rounded-lg text-sm hover:scale-105 transition-all"
-            style={{
-              background: `linear-gradient(135deg, ${colors.primary}, ${colors.secondary})`,
-              color: '#000',
-              boxShadow: `0 0 40px ${colors.glow}60`
-            }}
-          >
-            Play UNO Now
-          </button>
-        </div>
-      ),
-      rightLabel: "CARDS",
-    },
-
-    {
-      leftLabel: "CREATIVE",
-      title: (
-        <div className="flex flex-col items-center justify-center w-full h-full px-4">
-          {/* Game Icon */}
-          <div
-            className="text-5xl mb-4 p-4 rounded-2xl border"
-            style={{
-              background: 'rgba(0, 0, 0, 0.6)',
-              borderColor: `${colors.secondary}40`,
-              backdropFilter: 'blur(10px)',
-              boxShadow: `0 0 40px ${colors.secondary}40`
-            }}
-          >
-            🎨
-          </div>
-
-          <div
-            className="inline-block px-3 py-0.5 rounded-full mb-3 border text-[10px] font-bold"
-            style={{
-              background: 'rgba(0, 0, 0, 0.6)',
-              borderColor: colors.secondary,
-              color: colors.secondary
-            }}
-          >
-            CREATIVITY UNLEASHED
-          </div>
-
-          <h2 
-            className="font-orbitron text-4xl md:text-5xl font-black mb-3 text-center"
-            style={{
-              background: `linear-gradient(135deg, ${colors.secondary}, ${colors.accent})`,
-              WebkitBackgroundClip: 'text',
-              WebkitTextFillColor: 'transparent'
-            }}
-          >
-            SCRIBBLE PRO
-          </h2>
-
-          <p className="font-poppins text-sm mb-6 text-center max-w-xl" style={{ color: colors.textSecondary }}>
-            Draw, guess, compete with AI-powered features
-          </p>
-
-          <div className="grid grid-cols-3 gap-2 mb-6 max-w-2xl">
-            {[
-              { icon: '🎨', text: 'HD Canvas' },
-              { icon: '🤖', text: 'AI Hints' },
-              { icon: '🎭', text: 'Custom Words' },
-              { icon: '⏱️', text: 'Speed Mode' },
-              { icon: '🎪', text: 'Private Rooms' },
-              { icon: '🏅', text: 'Achievements' }
-            ].map((feat, i) => (
-              <div
-                key={i}
-                className="flex flex-col items-center gap-1.5 px-2 py-2 rounded-lg border"
-                style={{
-                  background: 'rgba(0, 0, 0, 0.5)',
-                  borderColor: `${colors.secondary}30`,
-                  backdropFilter: 'blur(10px)'
-                }}
-              >
-                <span className="text-2xl">{feat.icon}</span>
-                <span className="font-raleway text-[10px] font-semibold text-center" style={{ color: colors.text }}>
-                  {feat.text}
-                </span>
-              </div>
-            ))}
-          </div>
-
-          <button
-            onClick={() => navigate('/login')}
-            className="font-raleway font-bold px-8 py-2.5 rounded-lg text-sm hover:scale-105 transition-all"
-            style={{
-              background: `linear-gradient(135deg, ${colors.secondary}, ${colors.accent})`,
-              color: '#000',
-              boxShadow: `0 0 40px ${colors.secondary}60`
-            }}
-          >
-            Start Drawing
-          </button>
-        </div>
-      ),
-      rightLabel: "ART",
-    },
-
-    {
-      leftLabel: "FEATURES",
-      title: (
-        <div className="flex flex-col items-center justify-center w-full h-full px-4">
-          <h2 
-            className="font-orbitron text-3xl md:text-4xl font-black mb-6 text-center"
-            style={{ color: colors.text }}
-          >
-            REVOLUTIONARY FEATURES
-          </h2>
-
-          <div className="grid md:grid-cols-3 gap-4 max-w-4xl">
-            {[
-              { icon: '⚡', title: 'Quantum Speed', stat: '<10ms' },
-              { icon: '🔒', title: 'Military Security', stat: '256-bit' },
-              { icon: '🌍', title: 'Global Network', stat: '180+' },
-              { icon: '🎯', title: 'Anti-Cheat AI', stat: '99.9%' },
-              { icon: '🏆', title: 'Real Rewards', stat: '$1M+' },
-              { icon: '💬', title: 'Voice & Video', stat: 'HD' }
-            ].map((feat, i) => (
-              <div
-                key={i}
-                className="flex flex-col items-center gap-2 px-4 py-4 rounded-xl border hover:scale-105 transition-all"
-                style={{
-                  background: 'rgba(0, 0, 0, 0.6)',
-                  borderColor: `${colors.primary}40`,
-                  backdropFilter: 'blur(10px)'
-                }}
-              >
-                <span className="text-3xl">{feat.icon}</span>
-                <div
-                  className="px-2 py-0.5 rounded-full text-[10px] font-bold"
-                  style={{
-                    background: colors.primary,
-                    color: '#000'
-                  }}
-                >
-                  {feat.stat}
-                </div>
-                <h3 className="font-orbitron text-sm font-bold text-center" style={{ color: colors.primary }}>
-                  {feat.title}
-                </h3>
-              </div>
-            ))}
-          </div>
-        </div>
-      ),
-      rightLabel: "POWER",
-    },
-
-    {
-      leftLabel: "COMMUNITY",
-      title: (
-        <div className="flex flex-col items-center justify-center w-full h-full px-4">
-          <h2 
-            className="font-orbitron text-4xl md:text-5xl font-black mb-6 text-center"
-            style={{
-              background: `linear-gradient(135deg, ${colors.primary}, ${colors.secondary})`,
-              WebkitBackgroundClip: 'text',
-              WebkitTextFillColor: 'transparent'
-            }}
-          >
-            JOIN THE REVOLUTION
-          </h2>
-
-          <div className="grid grid-cols-3 gap-4 mb-6 max-w-3xl">
-            {[
-              { icon: '👥', value: '50K+', label: 'Active Players', live: true },
-              { icon: '🎮', value: '2.4M+', label: 'Games Today' },
-              { icon: '⭐', value: '4.9/5', label: 'User Rating' }
-            ].map((stat, i) => (
-              <div
-                key={i}
-                className="relative flex flex-col items-center gap-1.5 px-4 py-4 rounded-xl border"
-                style={{
-                  background: 'rgba(0, 0, 0, 0.6)',
-                  borderColor: `${colors.primary}40`,
-                  backdropFilter: 'blur(10px)'
-                }}
-              >
-                {stat.live && (
-                  <div className="absolute top-2 right-2 flex items-center gap-1">
-                    <div className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
-                  </div>
-                )}
-                <span className="text-3xl">{stat.icon}</span>
-                <div className="font-orbitron text-2xl font-black" style={{ color: colors.primary }}>
-                  {stat.value}
-                </div>
-                <div className="font-poppins text-xs" style={{ color: colors.textSecondary }}>
-                  {stat.label}
-                </div>
-              </div>
-            ))}
-          </div>
-
-          <button
-            onClick={() => navigate('/login')}
-            className="font-raleway font-bold px-10 py-3 rounded-lg text-sm hover:scale-105 transition-all"
-            style={{
-              background: `linear-gradient(135deg, ${colors.primary}, ${colors.secondary})`,
-              color: '#000',
-              boxShadow: `0 0 50px ${colors.glow}70`
-            }}
-          >
-            Join Community
-          </button>
-        </div>
-      ),
-      rightLabel: "TOGETHER",
-    },
-
-    {
-      leftLabel: "READY",
-      title: (
-        <div className="flex flex-col items-center justify-center w-full h-full px-4">
-          <div className="text-5xl mb-6">🚀</div>
-          
-          <h2 
-            className="font-orbitron text-4xl md:text-5xl font-black mb-4 text-center leading-tight"
-            style={{
-              background: `linear-gradient(135deg, ${colors.primary}, ${colors.secondary}, ${colors.accent})`,
-              WebkitBackgroundClip: 'text',
-              WebkitTextFillColor: 'transparent'
-            }}
-          >
-            YOUR JOURNEY
-            <br />
-            STARTS NOW
-          </h2>
-
-          <p className="font-poppins text-base mb-6 text-center max-w-xl" style={{ color: colors.textSecondary }}>
-            Join thousands experiencing next-gen gaming
-          </p>
-
-          <div className="grid grid-cols-3 gap-4 mb-6 max-w-3xl">
-            {[
-              { num: '01', icon: '📝', text: 'Sign Up Free' },
-              { num: '02', icon: '🎮', text: 'Choose Game' },
-              { num: '03', icon: '🏆', text: 'Start Winning' }
-            ].map((step, i) => (
-              <div
-                key={i}
-                className="relative flex flex-col items-center gap-2 px-4 py-4 rounded-xl border"
-                style={{
-                  background: 'rgba(0, 0, 0, 0.6)',
-                  borderColor: `${colors.primary}40`,
-                  backdropFilter: 'blur(10px)'
-                }}
-              >
-                <div
-                  className="absolute -top-3 -left-3 w-8 h-8 rounded-lg flex items-center justify-center font-orbitron text-xs font-black"
-                  style={{
-                    background: colors.primary,
-                    color: '#000'
-                  }}
-                >
-                  {step.num}
-                </div>
-                <span className="text-3xl mt-1">{step.icon}</span>
-                <span className="font-raleway text-xs font-semibold text-center" style={{ color: colors.text }}>
-                  {step.text}
-                </span>
-              </div>
-            ))}
-          </div>
-
-          <div className="flex gap-3">
-            <button
-              onClick={() => navigate('/login')}
-              className="font-raleway font-black px-10 py-3 rounded-lg text-base hover:scale-105 transition-all"
-              style={{
-                background: `linear-gradient(135deg, ${colors.primary}, ${colors.secondary})`,
-                color: '#000',
-                boxShadow: `0 0 60px ${colors.glow}80`
-              }}
-            >
-              START PLAYING FREE
-            </button>
-
-            <button
-              className="font-raleway font-bold px-6 py-3 rounded-lg text-sm border hover:scale-105 transition-all"
-              style={{
-                background: 'rgba(0, 0, 0, 0.6)',
-                borderColor: colors.primary,
-                color: colors.primary,
-                backdropFilter: 'blur(10px)'
-              }}
-            >
-              Watch Demo
-            </button>
-          </div>
-        </div>
-      ),
-      rightLabel: "JOIN",
-    },
-  ];
-
-  const header = (
-    <div 
-      className="w-full px-4 py-3 flex items-center justify-between border-b"
-      style={{ 
-        background: 'rgba(0, 0, 0, 0.6)',
-        borderColor: `${colors.primary}30`,
-        backdropFilter: 'blur(20px)'
-      }}
-    >
-      <h2 
-        className="font-orbitron text-xl font-black"
-        style={{ 
-          background: `linear-gradient(135deg, ${colors.primary}, ${colors.secondary})`,
-          WebkitBackgroundClip: 'text',
-          WebkitTextFillColor: 'transparent'
-        }}
-      >
-        KHELE
-      </h2>
-      
-      <div className="flex items-center gap-3">
-        <button
-          onClick={toggleTheme}
-          className="p-1.5 rounded-lg text-lg hover:scale-110 transition-all border"
-          style={{
-            background: 'rgba(0, 0, 0, 0.5)',
-            borderColor: `${colors.primary}30`,
-            backdropFilter: 'blur(10px)'
-          }}
-        >
-          {theme === 'dark' ? '🌞' : '🌙'}
-        </button>
-        
-        <button
-          onClick={() => navigate('/login')}
-          className="font-raleway font-bold px-5 py-1.5 rounded-lg text-sm hover:scale-105 transition-all"
-          style={{
-            background: `linear-gradient(135deg, ${colors.primary}, ${colors.secondary})`,
-            color: '#000'
-          }}
-        >
-          Login
-        </button>
-      </div>
-    </div>
-  );
-
-  const footer = (
-    <div 
-      className="text-center py-3 border-t"
-      style={{ 
-        background: 'rgba(0, 0, 0, 0.6)',
-        borderColor: `${colors.primary}30`,
-        backdropFilter: 'blur(20px)'
-      }}
-    >
-      <p className="font-raleway text-[10px]" style={{ color: colors.textSecondary }}>
-        © 2025 KHELE. All rights reserved. Made with 💚 for gamers worldwide.
-      </p>
-    </div>
-  );
-
+  // Intro Animation
   if (showIntro) {
     return (
-      <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black overflow-hidden">
-        <canvas ref={particleCanvasRef} className="absolute inset-0" />
+      <div className={`fixed inset-0 z-[9999] flex items-center justify-center ${colors.bg} transition-all duration-500`}>
+        <div className="text-center animate-fade-in">
+          <h1 className={`font-display text-6xl md:text-8xl font-black ${colors.primary}`}>
+            {introWords[currentWord]}
+          </h1>
+        </div>
       </div>
     );
   }
 
+  // Theme-based PixelSnow colors
+  const snowColor = theme === 'dark' ? '#00d9ff' : '#10b981';
+  const snowDensity = theme === 'dark' ? 0.15 : 0.1;
+  const snowBrightness = theme === 'dark' ? 0.6 : 0.4;
+
   return (
-    <div className="relative w-full h-screen overflow-hidden" style={{ backgroundColor: '#000' }}>
-      {/* GridScan Background - ENHANCED */}
-      <div className="fixed inset-0 z-0 pointer-events-none">
-        <GridScan
-          sensitivity={0.7}
-          lineThickness={2}
-          linesColor={colors.primary}
-          gridScale={0.15}
-          scanColor={colors.secondary}
-          scanOpacity={0.9}
-          enablePost={true}
-          bloomIntensity={1.5}
-          bloomThreshold={0.2}
-          bloomSmoothing={0.9}
-          chromaticAberration={0.008}
-          noiseIntensity={0.025}
-          scanGlow={1.5}
-          scanSoftness={3.5}
-          scanPhaseTaper={0.2}
-          scanDuration={2.5}
-          scanDelay={1.5}
-          lineStyle="solid"
-          lineJitter={0.2}
-          scanDirection="pingpong"
-          className="w-full h-full"
-          style={{ opacity: 1 }}
+    <div className={`relative w-full min-h-screen ${colors.bg} transition-colors duration-300`}>
+      {/* Animated PixelSnow Background with Parallax */}
+      <div
+        className="fixed inset-0 z-0 pointer-events-none"
+        style={{
+          transform: `translateY(${scrollY * 0.5}px)`,
+          opacity: 0.6
+        }}
+      >
+        <PixelSnow
+          color={snowColor}
+          flakeSize={0.008}
+          minFlakeSize={1.5}
+          pixelResolution={180}
+          speed={0.8}
+          density={snowDensity}
+          brightness={snowBrightness}
+          direction={135}
+          variant="round"
         />
       </div>
 
-      {/* Content Layer - PERFECTLY BLENDED */}
-      <div className="relative z-10 pointer-events-auto">
-        <FullScreenScrollFX
-          sections={sections}
-          header={header}
-          footer={footer}
-          showProgress
-          durations={{ change: 0.8, snap: 900 }}
-          colors={{
-            text: colors.text,
-            overlay: 'transparent',
-            pageBg: 'transparent',
-            stageBg: 'transparent',
+      {/* Header */}
+      <header className={`fixed top-0 left-0 right-0 z-50 backdrop-blur-xl border-b ${colors.border} ${colors.bgSecondary}/80`}>
+        <div className="container mx-auto px-4 md:px-6 py-4 flex items-center justify-between">
+          <h2 className={`font-display text-2xl md:text-3xl font-black ${colors.primary}`}>
+            KHELE
+          </h2>
+
+          <div className="flex items-center gap-3 md:gap-4">
+            <button
+              onClick={toggleTheme}
+              className={`p-2 rounded-xl text-xl hover:scale-110 transition-all duration-300 border ${colors.border} ${colors.surface}`}
+              aria-label="Toggle theme"
+            >
+              {theme === 'dark' ? <IoSunnyOutline className="w-5 h-5" /> : <IoMoonOutline className="w-5 h-5" />}
+            </button>
+
+            <button
+              onClick={() => navigate('/login')}
+              className={`font-accent font-bold px-4 md:px-6 py-2 rounded-xl text-sm ${colors.primaryBg} ${colors.primaryHover} text-white hover:scale-105 hover:shadow-xl transition-all duration-300`}
+            >
+              Login
+            </button>
+          </div>
+        </div>
+      </header>
+
+      {/* Main Content */}
+      <main className="relative z-10 pt-20">
+        {/* Hero Section */}
+        <section className="min-h-screen flex items-center justify-center px-4 md:px-6 py-12 md:py-20">
+          <div
+            className="container mx-auto max-w-6xl text-center"
+            style={{
+              transform: `translateY(${scrollY * 0.2}px)`,
+              transition: 'transform 0.1s ease-out'
+            }}
+          >
+            {/* Badge */}
+            <div className={`inline-flex items-center gap-2 px-4 py-2 rounded-full mb-6 border ${colors.border} ${colors.surface} backdrop-blur-xl animate-fade-in`}>
+              <IoFlashSharp className="w-4 h-4 md:w-5 md:h-5" />
+              <span className={`font-accent text-xs font-bold tracking-wider ${colors.primary}`}>
+                NEXT-GEN GAMING PLATFORM
+              </span>
+            </div>
+
+            {/* Main Title */}
+            <h1 className={`font-display text-5xl md:text-7xl lg:text-9xl font-black mb-6 leading-none ${colors.primary} animate-fade-in`}>
+              KHELE
+            </h1>
+
+            {/* Subtitle */}
+            <p className={`font-body text-lg md:text-2xl mb-8 font-light ${colors.textSecondary} animate-fade-in`}>
+              Where Champions Are Born
+            </p>
+
+            {/* Feature Pills */}
+            <div className="flex flex-wrap justify-center gap-3 md:gap-4 mb-10 animate-fade-in">
+              {[
+                { icon: IoFlashSharp, label: 'Lightning Fast' },
+                { icon: IoGlobeOutline, label: 'Global Play' },
+                { icon: IoTrophySharp, label: 'Real Rewards' }
+              ].map((item, i) => (
+                <div
+                  key={i}
+                  className={`flex items-center gap-2 px-4 md:px-5 py-2 md:py-3 rounded-xl border ${colors.border} ${colors.surface} backdrop-blur-xl hover:scale-105 transition-all duration-300`}
+                >
+                  <item.icon className="w-5 h-5 md:w-6 md:h-6" />
+                  <span className={`font-accent text-xs md:text-sm font-semibold ${colors.text}`}>
+                    {item.label}
+                  </span>
+                </div>
+              ))}
+            </div>
+
+            {/* CTA Button */}
+            <button
+              onClick={() => navigate('/login')}
+              className={`group font-accent font-black px-8 md:px-12 py-3 md:py-4 rounded-2xl text-base md:text-lg ${colors.primaryBg} ${colors.primaryHover} text-white hover:scale-105 hover:shadow-2xl transition-all duration-300 animate-fade-in`}
+            >
+              <span className="flex items-center gap-3">
+                Start Playing Free
+                <IoArrowForward className="group-hover:translate-x-2 transition-transform duration-300 w-5 h-5" />
+              </span>
+            </button>
+          </div>
+        </section>
+
+        {/* Games Section */}
+        <section
+          className="py-12 md:py-20 px-4 md:px-6"
+          style={{
+            transform: `translateY(${scrollY * 0.15}px)`,
+            transition: 'transform 0.1s ease-out'
           }}
-        />
-      </div>
+        >
+          <div className="container mx-auto max-w-7xl">
+            <h2 className={`font-display text-3xl md:text-5xl lg:text-6xl font-black text-center mb-12 md:mb-16 ${colors.text}`}>
+              Featured Games
+            </h2>
 
+            <div className="grid md:grid-cols-2 gap-6 md:gap-8">
+              {/* UNO Card */}
+              <div className={`group relative p-6 md:p-8 rounded-3xl border ${colors.border} ${colors.surface} backdrop-blur-xl hover:scale-[1.02] transition-all duration-500`}>
+                <div className={`text-5xl md:text-6xl mb-6 p-4 md:p-6 rounded-2xl inline-block border ${colors.border} ${colors.bgSecondary}`}>
+                  <FaIdCard className="w-12 h-12 md:w-16 md:h-16" />
+                </div>
+
+                <div className={`inline-block px-3 py-1 rounded-full mb-4 text-xs font-bold ${colors.primaryBg} text-white`}>
+                  MOST POPULAR
+                </div>
+
+                <h3 className={`font-display text-2xl md:text-3xl lg:text-4xl font-black mb-4 ${colors.text}`}>
+                  UNO REVOLUTION
+                </h3>
+
+                <p className={`font-body text-sm md:text-base mb-6 ${colors.textSecondary}`}>
+                  Classic card game reimagined with stunning 3D animations and multiplayer action
+                </p>
+
+                <div className="grid grid-cols-2 gap-3 mb-6">
+                  {[
+                    { icon: IoPeopleSharp, text: 'Up to 8 Players' },
+                    { icon: IoFlashSharp, text: 'Power Cards' },
+                    { icon: IoColorPaletteSharp, text: 'Custom Decks' },
+                    { icon: IoTrophySharp, text: 'Tournaments' }
+                  ].map((feat, i) => (
+                    <div
+                      key={i}
+                      className={`flex items-center gap-2 px-3 py-2 rounded-xl border ${colors.borderLight} ${colors.bgSecondary}`}
+                    >
+                      <feat.icon className="w-4 h-4 md:w-5 md:h-5" />
+                      <span className={`font-accent text-xs font-semibold ${colors.text}`}>
+                        {feat.text}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+
+                <button
+                  onClick={() => navigate('/login')}
+                  className={`font-accent font-bold px-6 md:px-8 py-2 md:py-3 rounded-xl text-sm ${colors.primaryBg} ${colors.primaryHover} text-white hover:scale-105 transition-all duration-300 w-full`}
+                >
+                  Play UNO Now
+                </button>
+              </div>
+
+              {/* Scribble Card */}
+              <div className={`group relative p-6 md:p-8 rounded-3xl border ${colors.border} ${colors.surface} backdrop-blur-xl hover:scale-[1.02] transition-all duration-500`}>
+                <div className={`text-5xl md:text-6xl mb-6 p-4 md:p-6 rounded-2xl inline-block border ${colors.border} ${colors.bgSecondary}`}>
+                  <IoBrushSharp className="w-12 h-12 md:w-16 md:h-16" />
+                </div>
+
+                <div className={`inline-block px-3 py-1 rounded-full mb-4 text-xs font-bold ${colors.secondaryBg} text-white`}>
+                  CREATIVITY UNLEASHED
+                </div>
+
+                <h3 className={`font-display text-2xl md:text-3xl lg:text-4xl font-black mb-4 ${colors.secondary}`}>
+                  SCRIBBLE PRO
+                </h3>
+
+                <p className={`font-body text-sm md:text-base mb-6 ${colors.textSecondary}`}>
+                  Draw, guess, and compete with friends using AI-powered features
+                </p>
+
+                <div className="grid grid-cols-3 gap-2 mb-6">
+                  {[
+                    { icon: IoColorPaletteSharp, text: 'HD Canvas' },
+                    { icon: MdSmartToy, text: 'AI Hints' },
+                    { icon: IoSparklesSharp, text: 'Custom Words' },
+                    { icon: IoTimerOutline, text: 'Speed Mode' },
+                    { icon: IoHomeSharp, text: 'Private Rooms' },
+                    { icon: IoRibbonSharp, text: 'Achievements' }
+                  ].map((feat, i) => (
+                    <div
+                      key={i}
+                      className={`flex flex-col items-center gap-1 px-2 py-2 rounded-xl border ${colors.borderLight} ${colors.bgSecondary}`}
+                    >
+                      <feat.icon className="w-5 h-5 md:w-6 md:h-6" />
+                      <span className={`font-accent text-[10px] font-semibold text-center ${colors.text}`}>
+                        {feat.text}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+
+                <button
+                  onClick={() => navigate('/login')}
+                  className={`font-accent font-bold px-6 md:px-8 py-2 md:py-3 rounded-xl text-sm ${colors.secondaryBg} ${colors.secondaryHover} text-white hover:scale-105 transition-all duration-300 w-full`}
+                >
+                  Start Drawing
+                </button>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* Features Section */}
+        <section
+          className="py-12 md:py-20 px-4 md:px-6"
+          style={{
+            transform: `translateY(${scrollY * 0.1}px)`,
+            transition: 'transform 0.1s ease-out'
+          }}
+        >
+          <div className="container mx-auto max-w-7xl">
+            <h2 className={`font-display text-3xl md:text-5xl lg:text-6xl font-black text-center mb-12 md:mb-16 ${colors.text}`}>
+              Revolutionary Features
+            </h2>
+
+            <div className="grid sm:grid-cols-2 md:grid-cols-3 gap-4 md:gap-6">
+              {[
+                { icon: IoSpeedometerSharp, title: 'Quantum Speed', stat: '<10ms', colorClass: 'primaryBg' },
+                { icon: IoShieldCheckmarkSharp, title: 'Military Security', stat: '256-bit', colorClass: 'secondaryBg' },
+                { icon: IoEarthSharp, title: 'Global Network', stat: '180+', colorClass: 'accentBg' },
+                { icon: IoLocateSharp, title: 'Anti-Cheat AI', stat: '99.9%', colorClass: 'primaryBg' },
+                { icon: IoTrophySharp, title: 'Real Rewards', stat: '$1M+', colorClass: 'secondaryBg' },
+                { icon: IoChatbubblesSharp, title: 'Voice & Video', stat: 'HD', colorClass: 'accentBg' }
+              ].map((feat, i) => (
+                <div
+                  key={i}
+                  className={`group relative p-4 md:p-6 rounded-2xl border ${colors.border} ${colors.surface} backdrop-blur-xl hover:scale-105 transition-all duration-300`}
+                >
+                  <div className="relative z-10 flex flex-col items-center gap-3">
+                    <feat.icon className="w-10 h-10 md:w-12 md:h-12" />
+                    <div className={`px-3 py-1 rounded-full text-xs font-bold ${colors[feat.colorClass]} text-white`}>
+                      {feat.stat}
+                    </div>
+                    <h3 className={`font-accent text-sm md:text-base font-bold text-center ${colors.text}`}>
+                      {feat.title}
+                    </h3>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        {/* Stats Section */}
+        <section
+          className="py-12 md:py-20 px-4 md:px-6"
+          style={{
+            transform: `translateY(${scrollY * 0.08}px)`,
+            transition: 'transform 0.1s ease-out'
+          }}
+        >
+          <div className="container mx-auto max-w-6xl">
+            <h2 className={`font-display text-3xl md:text-5xl lg:text-6xl font-black text-center mb-12 md:mb-16 ${colors.primary}`}>
+              Join The Revolution
+            </h2>
+
+            <div className="grid sm:grid-cols-2 md:grid-cols-3 gap-6 md:gap-8">
+              {[
+                { icon: IoPeopleSharp, value: '50K+', label: 'Active Players', live: true },
+                { icon: IoGameController, value: '2.4M+', label: 'Games Today' },
+                { icon: IoStarSharp, value: '4.9/5', label: 'User Rating' }
+              ].map((stat, i) => (
+                <div
+                  key={i}
+                  className={`relative p-6 md:p-8 rounded-2xl border ${colors.border} ${colors.surface} backdrop-blur-xl text-center`}
+                >
+                  {stat.live && (
+                    <div className="absolute top-4 right-4 flex items-center gap-2">
+                      <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
+                      <span className="font-accent text-xs font-bold text-green-500">LIVE</span>
+                    </div>
+                  )}
+                  <stat.icon className="w-10 h-10 md:w-12 md:h-12 mb-4 mx-auto" />
+                  <div className={`font-display text-3xl md:text-4xl font-black mb-2 ${colors.primary}`}>
+                    {stat.value}
+                  </div>
+                  <div className={`font-body text-sm ${colors.textSecondary}`}>
+                    {stat.label}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className="text-center mt-12">
+              <button
+                onClick={() => navigate('/login')}
+                className={`font-accent font-black px-8 md:px-12 py-3 md:py-4 rounded-2xl text-base md:text-lg ${colors.primaryBg} ${colors.primaryHover} text-white hover:scale-105 hover:shadow-2xl transition-all duration-300`}
+              >
+                Join Community
+              </button>
+            </div>
+          </div>
+        </section>
+
+        {/* CTA Section */}
+        <section
+          className="py-12 md:py-20 px-4 md:px-6"
+          style={{
+            transform: `translateY(${scrollY * 0.05}px)`,
+            transition: 'transform 0.1s ease-out'
+          }}
+        >
+          <div className="container mx-auto max-w-5xl text-center">
+            <IoRocketSharp className="w-12 h-12 md:w-16 md:h-16 mb-8 mx-auto" />
+
+            <h2 className={`font-display text-4xl md:text-6xl lg:text-7xl font-black mb-6 leading-tight ${colors.primary}`}>
+              Your Journey
+              <br />
+              Starts Now
+            </h2>
+
+            <p className={`font-body text-base md:text-lg mb-12 ${colors.textSecondary}`}>
+              Join thousands experiencing next-gen gaming
+            </p>
+
+            <div className="grid sm:grid-cols-2 md:grid-cols-3 gap-4 md:gap-6 mb-12">
+              {[
+                { num: '01', icon: IoDocumentTextSharp, text: 'Sign Up Free' },
+                { num: '02', icon: IoGameController, text: 'Choose Game' },
+                { num: '03', icon: IoCheckmarkCircleSharp, text: 'Start Winning' }
+              ].map((step, i) => (
+                <div
+                  key={i}
+                  className={`relative p-4 md:p-6 rounded-2xl border ${colors.border} ${colors.surface} backdrop-blur-xl`}
+                >
+                  <div className={`absolute -top-3 -left-3 w-8 h-8 md:w-10 md:h-10 rounded-xl flex items-center justify-center font-accent text-xs md:text-sm font-black ${colors.primaryBg} text-white`}>
+                    {step.num}
+                  </div>
+                  <step.icon className="w-8 h-8 md:w-10 md:h-10 mb-3 mx-auto mt-2" />
+                  <span className={`font-accent text-sm font-semibold ${colors.text}`}>
+                    {step.text}
+                  </span>
+                </div>
+              ))}
+            </div>
+
+            <div className="flex flex-wrap justify-center gap-4">
+              <button
+                onClick={() => navigate('/login')}
+                className={`font-accent font-black px-8 md:px-12 py-3 md:py-4 rounded-2xl text-base md:text-lg ${colors.primaryBg} ${colors.primaryHover} text-white hover:scale-105 hover:shadow-2xl transition-all duration-300`}
+              >
+                START PLAYING FREE
+              </button>
+
+              <button
+                className={`font-accent font-bold px-6 md:px-8 py-3 md:py-4 rounded-2xl text-sm md:text-base border ${colors.border} ${colors.surface} ${colors.primary} hover:scale-105 transition-all duration-300 backdrop-blur-xl`}
+              >
+                Watch Demo
+              </button>
+            </div>
+          </div>
+        </section>
+      </main>
+
+      {/* Footer */}
+      <footer className={`relative z-10 py-6 md:py-8 border-t ${colors.border} ${colors.bgSecondary}/80 backdrop-blur-xl`}>
+        <div className="container mx-auto px-4 md:px-6 text-center">
+          <p className={`font-body text-xs md:text-sm ${colors.textMuted}`}>
+            © 2025 KHELE. All rights reserved. Made with <IoTrophySharp className="inline w-4 h-4 text-green-500" /> for gamers worldwide.
+          </p>
+        </div>
+      </footer>
+
+      {/* Custom Animations */}
       <style>{`
-        @keyframes pulse {
-          0%, 100% { opacity: 1; }
-          50% { opacity: 0.85; }
+        @keyframes fade-in {
+          from {
+            opacity: 0;
+            transform: translateY(20px);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0);
+          }
         }
 
-        /* Perfect Grid Blending */
-        .fx-fixed {
-          background: transparent !important;
+        .animate-fade-in {
+          animation: fade-in 0.8s ease-out forwards;
         }
 
-        .fx-grid {
-          background: transparent !important;
-        }
-
-        .fx-bgs {
-          display: none !important;
-        }
-
-        /* Enhanced Text Shadows for Grid */
-        .font-orbitron,
-        .font-poppins,
-        .font-raleway {
-          text-shadow: 0 2px 20px rgba(0,0,0,0.9), 0 0 60px rgba(0,0,0,0.8);
-        }
-
-        /* Smooth Backdrop Filters */
-        [style*="backdrop-filter"] {
-          -webkit-backdrop-filter: blur(20px);
-          backdrop-filter: blur(20px);
-        }
-
-        /* Grid-Matched Borders */
-        [style*="border"] {
-          border-style: solid;
-          border-width: 1px;
+        html {
+          scroll-behavior: smooth;
         }
       `}</style>
     </div>
