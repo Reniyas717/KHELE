@@ -40,8 +40,26 @@ export const WebSocketProvider = ({ children }) => {
     isConnecting.current = true;
 
     try {
+      // Get WebSocket URL from environment or construct from API URL
+      const getWebSocketUrl = () => {
+        // If VITE_WS_URL is explicitly set, use it
+        if (import.meta.env.VITE_WS_URL) {
+          return import.meta.env.VITE_WS_URL;
+        }
+
+        // Otherwise, construct from API URL
+        const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+        // Remove /api suffix if present
+        const baseUrl = apiUrl.replace('/api', '');
+        // Replace http with ws, https with wss
+        const wsUrl = baseUrl.replace(/^http/, 'ws');
+        return `${wsUrl}/ws`;
+      };
+
       console.log('🔌 Connecting to WebSocket... (attempt', reconnectAttempts.current + 1, ')');
-      ws.current = new WebSocket('ws://localhost:5000/ws');
+      const wsUrl = getWebSocketUrl();
+      console.log('🌐 WebSocket URL:', wsUrl);
+      ws.current = new WebSocket(wsUrl);
 
       ws.current.onopen = () => {
         console.log('✅ WebSocket connected');
@@ -83,16 +101,16 @@ export const WebSocketProvider = ({ children }) => {
         console.log('🔌 WebSocket disconnected', event.code, event.reason);
         setIsConnected(false);
         isConnecting.current = false;
-        
+
         // Only attempt to reconnect if shouldReconnect is true and not exceeded max attempts
         if (shouldReconnect.current && reconnectAttempts.current < maxReconnectAttempts) {
           reconnectAttempts.current++;
           const delay = Math.min(1000 * Math.pow(2, reconnectAttempts.current), 10000); // Exponential backoff
-          
+
           if (reconnectTimeout.current) {
             clearTimeout(reconnectTimeout.current);
           }
-          
+
           console.log(`🔄 Reconnecting in ${delay}ms...`);
           reconnectTimeout.current = setTimeout(() => {
             connect();
@@ -110,11 +128,11 @@ export const WebSocketProvider = ({ children }) => {
   const disconnect = () => {
     console.log('🔌 Disconnecting WebSocket...');
     shouldReconnect.current = false;
-    
+
     if (reconnectTimeout.current) {
       clearTimeout(reconnectTimeout.current);
     }
-    
+
     if (ws.current) {
       // Remove event listeners to prevent reconnection
       ws.current.onclose = null;
@@ -122,7 +140,7 @@ export const WebSocketProvider = ({ children }) => {
       ws.current.close();
       ws.current = null;
     }
-    
+
     setIsConnected(false);
     isConnecting.current = false;
     reconnectAttempts.current = 0;
@@ -141,7 +159,7 @@ export const WebSocketProvider = ({ children }) => {
 
   const on = useCallback((event, handler) => {
     console.log('👂 Registering handler for:', event);
-    
+
     if (!messageHandlers.current.has(event)) {
       messageHandlers.current.set(event, new Set());
     }
