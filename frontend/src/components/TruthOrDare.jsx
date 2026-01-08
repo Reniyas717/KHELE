@@ -3,7 +3,7 @@ import { useWebSocket } from '../context/WebSocketContext';
 
 export default function TruthOrDare({ roomCode, username, players, onLeaveGame }) {
   const { sendMessage, on } = useWebSocket();
-  
+
   // Game states
   const [gameState, setGameState] = useState('lobby');
   const [settings, setSettings] = useState({
@@ -20,18 +20,18 @@ export default function TruthOrDare({ roomCode, username, players, onLeaveGame }
   const [wheelRotation, setWheelRotation] = useState(0);
   const [isSpinning, setIsSpinning] = useState(false);
   const [showCardModal, setShowCardModal] = useState(false);
-  
+
   // API data
   const [truthQuestions, setTruthQuestions] = useState([]);
   const [dareQuestions, setDareQuestions] = useState([]);
   const [isLoadingAPI, setIsLoadingAPI] = useState(true);
-  
+
   const wheelRef = useRef(null);
   const isHost = players[0]?.username === username;
 
   // Wheel colors for segments
   const wheelColors = [
-    '#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', 
+    '#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4',
     '#FFEAA7', '#DFE6E9', '#FF85A2', '#A29BFE',
     '#74B9FF', '#00B894', '#FDCB6E', '#E17055'
   ];
@@ -41,13 +41,13 @@ export default function TruthOrDare({ roomCode, username, players, onLeaveGame }
     const fetchQuestions = async () => {
       setIsLoadingAPI(true);
       console.log('🔍 Fetching questions for rating:', settings.rating);
-      
+
       try {
         const fetchBatch = async (type, count) => {
           const questions = [];
           for (let i = 0; i < count; i++) {
             try {
-              const res = await fetch(`http://localhost:5000/api/rooms/truthordare/${type}?rating=${settings.rating}`);
+              const res = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5000/api'}/rooms/truthordare/${type}?rating=${settings.rating}`);
               if (res.ok) {
                 const data = await res.json();
                 if (data.question) questions.push(data.question);
@@ -135,18 +135,18 @@ export default function TruthOrDare({ roomCode, username, players, onLeaveGame }
     const unsubSpin = on('TOD_SPIN_WHEEL', (data) => {
       console.log('🎡 Wheel spinning - FULL PAYLOAD:', data.payload);
       const { selectedPlayer, cards, targetRotation } = data.payload;
-      
+
       if (!cards || !Array.isArray(cards) || cards.length === 0) {
         console.error('❌ No cards received in payload!');
         return;
       }
-      
+
       console.log('✅ Cards received:', cards);
-      
+
       // Set spinning state
       setIsSpinning(true);
       setCards(cards);
-      
+
       // Calculate rotation to land on selected player
       const playerIndex = players.findIndex(p => p.username === selectedPlayer);
       const segmentAngle = 360 / players.length;
@@ -155,9 +155,9 @@ export default function TruthOrDare({ roomCode, username, players, onLeaveGame }
       const baseRotation = 360 * 8; // 8 full spins for dramatic effect
       const playerOffset = (playerIndex * segmentAngle) + (segmentAngle / 2);
       const finalRotation = baseRotation + (360 - playerOffset) + Math.random() * 20 - 10;
-      
+
       setWheelRotation(prev => prev + finalRotation);
-      
+
       // After spin animation completes
       setTimeout(() => {
         setIsSpinning(false);
@@ -166,12 +166,12 @@ export default function TruthOrDare({ roomCode, username, players, onLeaveGame }
       }, 5000);
     });
 
-      const unsubCardSelect = on('TOD_CARD_SELECTED', (data) => {
+    const unsubCardSelect = on('TOD_CARD_SELECTED', (data) => {
       console.log('🎴 Card selected:', data.payload.card);
       setSelectedCard(data.payload.card);
       setFlippedCard(data.payload.card.id);
       setShowCardModal(true);
-      
+
       // Auto-close modal after 4 seconds and move to rating
       setTimeout(() => {
         setShowCardModal(false);
@@ -200,7 +200,7 @@ export default function TruthOrDare({ roomCode, username, players, onLeaveGame }
       setSelectedPlayer(null);
       setCards([]);
       setShowCardModal(false);
-      
+
       if (round > settings.rounds) {
         setGameState('gameOver');
       } else {
@@ -256,12 +256,12 @@ export default function TruthOrDare({ roomCode, username, players, onLeaveGame }
 
   const spinWheel = useCallback(() => {
     if (!isHost || isSpinning || truthQuestions.length === 0 || dareQuestions.length === 0) return;
-    
+
     const randomPlayer = players[Math.floor(Math.random() * players.length)].username;
     const newCards = generateCards();
-    
+
     console.log('🎰 Spinning wheel:', { randomPlayer, cards: newCards });
-    
+
     sendMessage('TOD_SPIN_WHEEL', {
       roomCode,
       selectedPlayer: randomPlayer,
@@ -295,14 +295,14 @@ export default function TruthOrDare({ roomCode, username, players, onLeaveGame }
   const nextRound = useCallback(() => {
     if (!isHost) return;
     const ratingValues = Object.values(ratings);
-    const averageRating = ratingValues.length > 0 
-      ? ratingValues.reduce((a, b) => a + b, 0) / ratingValues.length 
+    const averageRating = ratingValues.length > 0
+      ? ratingValues.reduce((a, b) => a + b, 0) / ratingValues.length
       : 0;
-    
+
     const newScores = { ...scores };
     newScores[selectedPlayer] = (newScores[selectedPlayer] || 0) + Math.round(averageRating);
     const nextRoundNum = currentRound + 1;
-    
+
     sendMessage('TOD_NEXT_ROUND', {
       roomCode,
       scores: newScores,
@@ -313,11 +313,11 @@ export default function TruthOrDare({ roomCode, username, players, onLeaveGame }
   // Render wheel segment
   const renderWheelSegments = () => {
     const segmentAngle = 360 / players.length;
-    
+
     return players.map((player, index) => {
       const rotation = index * segmentAngle;
       const color = wheelColors[index % wheelColors.length];
-      
+
       return (
         <div
           key={player.username}
@@ -342,9 +342,9 @@ export default function TruthOrDare({ roomCode, username, players, onLeaveGame }
               transform: `translateX(-50%) rotate(${segmentAngle / 2}deg)`,
             }}
           >
-            <span 
+            <span
               className="text-white font-bold text-sm drop-shadow-lg px-2 py-1 rounded bg-black/30"
-              style={{ 
+              style={{
                 writingMode: 'vertical-rl',
                 textOrientation: 'mixed',
                 transform: 'rotate(180deg)'
@@ -403,11 +403,10 @@ export default function TruthOrDare({ roomCode, username, players, onLeaveGame }
           {players.map(player => (
             <div
               key={player.username}
-              className={`p-3 md:p-4 rounded-xl transition-all duration-300 ${
-                player.username === selectedPlayer
+              className={`p-3 md:p-4 rounded-xl transition-all duration-300 ${player.username === selectedPlayer
                   ? 'bg-gradient-to-br from-yellow-400 to-orange-500 ring-4 ring-yellow-300 scale-105'
                   : 'bg-white/10 backdrop-blur'
-              }`}
+                }`}
             >
               <div className="text-white font-bold text-lg truncate">{player.username}</div>
               <div className="text-2xl md:text-3xl font-bold text-yellow-300">
@@ -424,7 +423,7 @@ export default function TruthOrDare({ roomCode, username, players, onLeaveGame }
         {gameState === 'lobby' && (
           <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-6 md:p-8 animate-fade-in">
             <h2 className="text-2xl md:text-3xl font-bold text-white mb-6">⚙️ Game Settings</h2>
-            
+
             {isHost ? (
               <div className="space-y-6">
                 <div>
@@ -434,11 +433,10 @@ export default function TruthOrDare({ roomCode, username, players, onLeaveGame }
                       <button
                         key={rating}
                         onClick={() => updateSettings({ ...settings, rating })}
-                        className={`px-6 py-3 md:px-8 md:py-4 rounded-xl font-bold text-lg transition-all hover:scale-105 ${
-                          settings.rating === rating
+                        className={`px-6 py-3 md:px-8 md:py-4 rounded-xl font-bold text-lg transition-all hover:scale-105 ${settings.rating === rating
                             ? 'bg-gradient-to-r from-pink-500 to-purple-500 text-white ring-4 ring-pink-300 shadow-lg shadow-pink-500/50'
                             : 'bg-white/20 text-white hover:bg-white/30'
-                        }`}
+                          }`}
                       >
                         {rating}
                       </button>
@@ -472,11 +470,10 @@ export default function TruthOrDare({ roomCode, username, players, onLeaveGame }
                 <button
                   onClick={startGame}
                   disabled={players.length < 2}
-                  className={`w-full py-5 md:py-6 rounded-xl font-bold text-xl md:text-2xl transition-all ${
-                    players.length < 2
+                  className={`w-full py-5 md:py-6 rounded-xl font-bold text-xl md:text-2xl transition-all ${players.length < 2
                       ? 'bg-gray-500/50 text-gray-300 cursor-not-allowed'
                       : 'bg-gradient-to-r from-pink-500 via-purple-500 to-indigo-500 text-white hover:scale-[1.02] shadow-2xl shadow-purple-500/50 animate-pulse'
-                  }`}
+                    }`}
                 >
                   {players.length < 2 ? '⏳ Waiting for players...' : '🚀 Start Game!'}
                 </button>
@@ -486,7 +483,7 @@ export default function TruthOrDare({ roomCode, username, players, onLeaveGame }
                 <div className="text-7xl mb-4 animate-bounce">⏳</div>
                 <h3 className="text-2xl font-bold text-white mb-2">Waiting for host to start...</h3>
                 <p className="text-gray-300">
-                  Rating: <span className="text-pink-400 font-bold">{settings.rating}</span> | 
+                  Rating: <span className="text-pink-400 font-bold">{settings.rating}</span> |
                   Rounds: <span className="text-pink-400 font-bold">{settings.rounds}</span>
                 </p>
               </div>
@@ -500,7 +497,7 @@ export default function TruthOrDare({ roomCode, username, players, onLeaveGame }
             <h2 className="text-3xl md:text-4xl font-bold text-white mb-8 text-center">
               {isSpinning ? '🎡 Spinning...' : '🎯 Spin to choose a player!'}
             </h2>
-            
+
             {/* Wheel Container */}
             <div className="relative w-80 h-80 md:w-96 md:h-96 mb-8">
               {/* Outer Ring with Lights */}
@@ -511,7 +508,7 @@ export default function TruthOrDare({ roomCode, username, players, onLeaveGame }
                     key={i}
                     className={`absolute w-3 h-3 rounded-full ${isSpinning ? 'animate-pulse' : ''}`}
                     style={{
-                      background: isSpinning 
+                      background: isSpinning
                         ? `hsl(${(i * 18 + Date.now() / 50) % 360}, 100%, 60%)`
                         : '#FFD700',
                       boxShadow: '0 0 10px #FFD700',
@@ -521,17 +518,17 @@ export default function TruthOrDare({ roomCode, username, players, onLeaveGame }
                     }}
                   />
                 ))}
-                
+
                 {/* Inner Wheel */}
-                <div 
+                <div
                   ref={wheelRef}
                   className="w-full h-full rounded-full overflow-hidden relative shadow-inner"
                   style={{
                     transform: `rotate(${wheelRotation}deg)`,
-                    transition: isSpinning 
-                      ? 'transform 5s cubic-bezier(0.17, 0.67, 0.12, 0.99)' 
+                    transition: isSpinning
+                      ? 'transform 5s cubic-bezier(0.17, 0.67, 0.12, 0.99)'
                       : 'none',
-                    background: 'conic-gradient(from 0deg, ' + 
+                    background: 'conic-gradient(from 0deg, ' +
                       players.map((_, i) => {
                         const color = wheelColors[i % wheelColors.length];
                         const start = (i / players.length) * 100;
@@ -544,7 +541,7 @@ export default function TruthOrDare({ roomCode, username, players, onLeaveGame }
                   {players.map((player, index) => {
                     const segmentAngle = 360 / players.length;
                     const rotation = index * segmentAngle + segmentAngle / 2;
-                    
+
                     return (
                       <div
                         key={player.username}
@@ -553,7 +550,7 @@ export default function TruthOrDare({ roomCode, username, players, onLeaveGame }
                           transform: `rotate(${rotation}deg) translateX(20%)`,
                         }}
                       >
-                        <span 
+                        <span
                           className="text-white font-bold text-sm md:text-base drop-shadow-lg bg-black/40 px-2 py-1 rounded"
                           style={{
                             transform: `rotate(90deg)`,
@@ -565,17 +562,17 @@ export default function TruthOrDare({ roomCode, username, players, onLeaveGame }
                       </div>
                     );
                   })}
-                  
+
                   {/* Center Cap */}
                   <div className="absolute top-1/2 left-1/2 w-16 h-16 md:w-20 md:h-20 -translate-x-1/2 -translate-y-1/2 rounded-full bg-gradient-to-br from-yellow-400 via-yellow-500 to-yellow-600 shadow-lg border-4 border-yellow-300 flex items-center justify-center">
                     <div className="w-8 h-8 md:w-10 md:h-10 rounded-full bg-gradient-to-br from-yellow-300 to-yellow-500 shadow-inner" />
                   </div>
                 </div>
               </div>
-              
+
               {/* Pointer */}
               <div className="absolute -top-4 left-1/2 -translate-x-1/2 z-10">
-                <div 
+                <div
                   className="w-0 h-0 drop-shadow-lg"
                   style={{
                     borderLeft: '20px solid transparent',
@@ -584,11 +581,11 @@ export default function TruthOrDare({ roomCode, username, players, onLeaveGame }
                     filter: 'drop-shadow(0 4px 6px rgba(0,0,0,0.3))',
                   }}
                 />
-                <div 
+                <div
                   className="w-6 h-6 rounded-full bg-gradient-to-br from-yellow-400 to-yellow-600 absolute -top-2 left-1/2 -translate-x-1/2 border-2 border-yellow-300"
                 />
               </div>
-              
+
               {/* Stand */}
               <div className="absolute -bottom-16 left-1/2 -translate-x-1/2">
                 <div className="w-32 h-16 bg-gradient-to-b from-red-600 to-red-800 rounded-b-xl shadow-xl" />
@@ -605,13 +602,13 @@ export default function TruthOrDare({ roomCode, username, players, onLeaveGame }
                 🎰 SPIN THE WHEEL!
               </button>
             )}
-            
+
             {!isHost && !isSpinning && (
               <div className="mt-8 text-xl text-white/80 animate-pulse">
                 Waiting for {players[0]?.username} to spin...
               </div>
             )}
-            
+
             {isSpinning && (
               <div className="mt-8 text-2xl font-bold text-yellow-400 animate-pulse">
                 🎲 Who will it be?!
@@ -630,12 +627,12 @@ export default function TruthOrDare({ roomCode, username, players, onLeaveGame }
                 </span>
               </div>
               <h2 className="text-3xl md:text-4xl font-bold text-white">
-                {selectedPlayer === username 
-                  ? "✨ Pick a card to reveal your fate!" 
+                {selectedPlayer === username
+                  ? "✨ Pick a card to reveal your fate!"
                   : `👀 ${selectedPlayer} is choosing...`}
               </h2>
             </div>
-            
+
             <div className="flex flex-wrap justify-center gap-4 md:gap-6">
               {cards.map((card, index) => (
                 <div
@@ -658,10 +655,10 @@ export default function TruthOrDare({ roomCode, username, players, onLeaveGame }
                     }}
                   >
                     {/* Card Back */}
-                    <div 
+                    <div
                       className={`absolute w-full h-full rounded-2xl shadow-2xl backface-hidden flex flex-col items-center justify-center p-4
-                        ${card.type === 'truth' 
-                          ? 'bg-gradient-to-br from-blue-500 via-blue-600 to-indigo-700' 
+                        ${card.type === 'truth'
+                          ? 'bg-gradient-to-br from-blue-500 via-blue-600 to-indigo-700'
                           : 'bg-gradient-to-br from-red-500 via-red-600 to-orange-700'
                         }
                         border-4 ${card.type === 'truth' ? 'border-blue-300' : 'border-red-300'}
@@ -680,15 +677,15 @@ export default function TruthOrDare({ roomCode, username, players, onLeaveGame }
                     </div>
 
                     {/* Card Front */}
-                    <div 
+                    <div
                       className={`absolute w-full h-full rounded-2xl shadow-2xl flex flex-col items-center justify-center p-4
-                        ${card.type === 'truth' 
-                          ? 'bg-gradient-to-br from-blue-400 via-blue-500 to-indigo-600' 
+                        ${card.type === 'truth'
+                          ? 'bg-gradient-to-br from-blue-400 via-blue-500 to-indigo-600'
                           : 'bg-gradient-to-br from-red-400 via-red-500 to-orange-600'
                         }
                         border-4 ${card.type === 'truth' ? 'border-blue-200' : 'border-red-200'}
                       `}
-                      style={{ 
+                      style={{
                         backfaceVisibility: 'hidden',
                         transform: 'rotateY(180deg)'
                       }}
@@ -710,10 +707,10 @@ export default function TruthOrDare({ roomCode, username, players, onLeaveGame }
         {/* CARD MODAL */}
         {showCardModal && selectedCard && (
           <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-fade-in">
-            <div 
+            <div
               className={`max-w-lg w-full rounded-3xl p-8 shadow-2xl transform animate-bounce-in relative
-                ${selectedCard.type === 'truth' 
-                  ? 'bg-gradient-to-br from-blue-500 via-blue-600 to-indigo-700 border-4 border-blue-300' 
+                ${selectedCard.type === 'truth'
+                  ? 'bg-gradient-to-br from-blue-500 via-blue-600 to-indigo-700 border-4 border-blue-300'
                   : 'bg-gradient-to-br from-red-500 via-red-600 to-orange-700 border-4 border-red-300'
                 }`}
             >
@@ -736,7 +733,7 @@ export default function TruthOrDare({ roomCode, username, players, onLeaveGame }
                   {selectedCard.question}
                 </p>
                 <div className="text-white/70 mb-6">
-                  {selectedPlayer === username 
+                  {selectedPlayer === username
                     ? "Complete this challenge! Others will rate your performance."
                     : `${selectedPlayer} must complete this challenge!`}
                 </div>
@@ -756,19 +753,18 @@ export default function TruthOrDare({ roomCode, username, players, onLeaveGame }
         {/* RATING */}
         {gameState === 'rating' && selectedCard && (
           <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-6 md:p-8 animate-fade-in">
-            <div className={`text-center mb-8 p-6 md:p-8 rounded-2xl ${
-              selectedCard.type === 'truth' 
-                ? 'bg-gradient-to-br from-blue-500/30 to-indigo-600/30 border-2 border-blue-400/50' 
+            <div className={`text-center mb-8 p-6 md:p-8 rounded-2xl ${selectedCard.type === 'truth'
+                ? 'bg-gradient-to-br from-blue-500/30 to-indigo-600/30 border-2 border-blue-400/50'
                 : 'bg-gradient-to-br from-red-500/30 to-orange-600/30 border-2 border-red-400/50'
-            }`}>
+              }`}>
               <div className="text-6xl mb-4">{selectedCard.type === 'truth' ? '🤔' : '🔥'}</div>
               <h2 className="text-2xl md:text-3xl font-bold text-white mb-4 uppercase">{selectedCard.type}</h2>
               <p className="text-xl md:text-2xl text-white font-medium">{selectedCard.question}</p>
             </div>
 
             <h3 className="text-xl md:text-2xl font-bold text-white mb-6 text-center">
-              {selectedPlayer === username 
-                ? "🎭 Perform your challenge! Others are watching..." 
+              {selectedPlayer === username
+                ? "🎭 Perform your challenge! Others are watching..."
                 : `⭐ Rate ${selectedPlayer}'s performance!`}
             </h3>
 
@@ -813,11 +809,10 @@ export default function TruthOrDare({ roomCode, username, players, onLeaveGame }
                 {players.filter(p => p.username !== selectedPlayer).map(player => (
                   <div
                     key={player.username}
-                    className={`p-3 rounded-lg text-center transition-all ${
-                      ratings[player.username] !== undefined
+                    className={`p-3 rounded-lg text-center transition-all ${ratings[player.username] !== undefined
                         ? 'bg-green-500/30 border border-green-400/50'
                         : 'bg-white/10 border border-white/20'
-                    }`}
+                      }`}
                   >
                     <span className={ratings[player.username] !== undefined ? 'text-green-300' : 'text-gray-400'}>
                       {player.username}
@@ -848,22 +843,21 @@ export default function TruthOrDare({ roomCode, username, players, onLeaveGame }
             <h2 className="text-4xl md:text-5xl font-black text-white mb-8 bg-gradient-to-r from-yellow-400 via-pink-500 to-purple-500 bg-clip-text text-transparent">
               Game Over!
             </h2>
-            
+
             <div className="space-y-4 mb-8">
               {Object.entries(scores)
                 .sort(([, a], [, b]) => b - a)
                 .map(([player, score], index) => (
                   <div
                     key={player}
-                    className={`p-5 rounded-xl transition-all ${
-                      index === 0 
-                        ? 'bg-gradient-to-r from-yellow-500 via-amber-500 to-orange-500 scale-105 shadow-2xl shadow-yellow-500/50' 
+                    className={`p-5 rounded-xl transition-all ${index === 0
+                        ? 'bg-gradient-to-r from-yellow-500 via-amber-500 to-orange-500 scale-105 shadow-2xl shadow-yellow-500/50'
                         : index === 1
-                        ? 'bg-gradient-to-r from-gray-400 to-gray-500'
-                        : index === 2
-                        ? 'bg-gradient-to-r from-amber-700 to-amber-800'
-                        : 'bg-white/10'
-                    }`}
+                          ? 'bg-gradient-to-r from-gray-400 to-gray-500'
+                          : index === 2
+                            ? 'bg-gradient-to-r from-amber-700 to-amber-800'
+                            : 'bg-white/10'
+                      }`}
                   >
                     <div className="flex justify-between items-center">
                       <div className="flex items-center gap-4">
@@ -877,7 +871,7 @@ export default function TruthOrDare({ roomCode, username, players, onLeaveGame }
                   </div>
                 ))}
             </div>
-            
+
             <div className="flex flex-col md:flex-row gap-4 justify-center">
               <button
                 onClick={() => {
