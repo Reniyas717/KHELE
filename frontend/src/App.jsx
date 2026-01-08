@@ -32,6 +32,9 @@ function AppContent() {
     setRoomData(null);
     setGameType(null);
     localStorage.removeItem('username');
+    localStorage.removeItem('token');
+    localStorage.removeItem('user');
+    // Navigation to Landing will be handled by route protection
   };
 
   const handleRoomJoined = (roomCode, room, selectedGameType) => {
@@ -49,32 +52,32 @@ function AppContent() {
   return (
     <Routes>
       <Route path="/" element={<Landing />} />
-      
-      <Route 
-        path="/login" 
+
+      <Route
+        path="/login"
         element={
           user ? <Navigate to="/lobby" replace /> : <Login onLogin={handleLogin} />
-        } 
+        }
       />
-      
-      <Route 
-        path="/lobby" 
+
+      <Route
+        path="/lobby"
         element={
           !user ? (
-            <Navigate to="/login" replace />
+            <Navigate to="/" replace />
           ) : currentRoom ? (
             <Navigate to={`/room/${currentRoom}`} replace />
           ) : (
             <Lobby onRoomJoined={handleRoomJoined} onLogout={handleLogout} />
           )
-        } 
+        }
       />
-      
-      <Route 
-        path="/room/:roomCode" 
+
+      <Route
+        path="/room/:roomCode"
         element={
           !user ? (
-            <Navigate to="/login" replace />
+            <Navigate to="/" replace />
           ) : !currentRoom ? (
             <Navigate to="/lobby" replace />
           ) : (
@@ -86,9 +89,9 @@ function AppContent() {
               onLeaveRoom={handleLeaveRoom}
             />
           )
-        } 
+        }
       />
-      
+
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );

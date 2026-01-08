@@ -4,14 +4,26 @@ import { useTheme } from '../context/ThemeContext';
 import UNOGame from './UNOGame';
 import ScribbleGame from './ScribbleGame';
 import TruthOrDare from './TruthOrDare';
+import PixelSnow from './ui/PixelSnow';
+import {
+  IoArrowBack,
+  IoPeopleSharp,
+  IoGameController,
+  IoCopyOutline,
+  IoCheckmarkCircle
+} from 'react-icons/io5';
+import { FaIdCard, FaCrown, FaUser } from 'react-icons/fa6';
+import { IoBrushSharp } from 'react-icons/io5';
+import { MdTheaterComedy } from 'react-icons/md';
 
 export default function GameRoom({ roomCode, username, initialRoomData, preSelectedGame, onLeaveRoom }) {
-  const { colors } = useTheme();
+  const { colors, theme } = useTheme();
   const [room, setRoom] = useState(initialRoomData);
   const [gameStarted, setGameStarted] = useState(false);
   const [gameType, setGameType] = useState(preSelectedGame || initialRoomData?.gameType);
   const [players, setPlayers] = useState(initialRoomData?.players || []);
   const [initialGameState, setInitialGameState] = useState(null);
+  const [copied, setCopied] = useState(false);
   const { connect, disconnect, sendMessage, on, isConnected } = useWebSocket();
   const hasJoined = useRef(false);
   const isLeavingIntentionally = useRef(false);
@@ -20,9 +32,9 @@ export default function GameRoom({ roomCode, username, initialRoomData, preSelec
   // Get players array safely
   const isHost = players[0]?.username === username || room?.host === username;
 
-  console.log('🎮 GameRoom render:', { 
-    username, 
-    roomCode, 
+  console.log('🎮 GameRoom render:', {
+    username,
+    roomCode,
     playerCount: players.length,
     isConnected,
     hasJoined: hasJoined.current,
@@ -37,14 +49,14 @@ export default function GameRoom({ roomCode, username, initialRoomData, preSelec
 
     return () => {
       console.log('🧹 GameRoom unmounting...');
-      
+
       if (isLeavingIntentionally.current && hasJoined.current && roomCode && username) {
         console.log('👋 Sending LEAVE_ROOM on cleanup');
         sendMessage('LEAVE_ROOM', { roomCode, username });
       } else {
         console.log('⏭️ Skipping LEAVE_ROOM (not intentional leave)');
       }
-      
+
       disconnect();
     };
   }, []);
@@ -54,7 +66,7 @@ export default function GameRoom({ roomCode, username, initialRoomData, preSelec
     if (isConnected && !hasJoined.current && roomCode && username) {
       console.log('🚪 WebSocket connected, joining room:', { roomCode, username });
       hasJoined.current = true;
-      
+
       sendMessage('JOIN_ROOM', { roomCode, username });
     }
   }, [isConnected, roomCode, username]);
@@ -96,27 +108,27 @@ export default function GameRoom({ roomCode, username, initialRoomData, preSelec
     const unsubGameStarted = on('GAME_STARTED', (data) => {
       console.log('🎮 GAME_STARTED event received:', data);
       console.log('🎮 Full payload:', JSON.stringify(data.payload, null, 2));
-      
+
       const payload = data.payload || data;
       const receivedGameType = payload.gameType || payload.game || gameType;
       const receivedGameState = payload.gameState;
-      
-      console.log('🎯 Extracted:', { 
-        receivedGameType, 
+
+      console.log('🎯 Extracted:', {
+        receivedGameType,
         hasGameState: !!receivedGameState,
         gameStateCurrentDrawer: receivedGameState?.currentDrawer,
         gameStatePlayers: receivedGameState?.players?.map(p => p.username)
       });
-      
+
       if (!receivedGameType) {
         console.error('❌ No gameType found in GAME_STARTED event!');
         return;
       }
-      
+
       setGameType(receivedGameType);
       setInitialGameState(receivedGameState);
       setGameStarted(true);
-      
+
       console.log('✅ Game started! Type:', receivedGameType);
     });
 
@@ -154,15 +166,15 @@ export default function GameRoom({ roomCode, username, initialRoomData, preSelec
   const handleStartGame = async () => {
     try {
       console.log('🎮 Host starting game:', { gameType, roomCode, username });
-      
-      sendMessage('START_GAME', { 
-        roomCode, 
+
+      sendMessage('START_GAME', {
+        roomCode,
         username,
         gameType: gameType
       });
-      
+
       console.log('✅ START_GAME message sent');
-      
+
     } catch (err) {
       console.error('❌ Error starting game:', err);
       alert(err.message);
@@ -181,6 +193,12 @@ export default function GameRoom({ roomCode, username, initialRoomData, preSelec
     setInitialGameState(null);
   };
 
+  const handleCopyCode = () => {
+    navigator.clipboard.writeText(roomCode);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
   // Get display name for game type
   const getGameDisplayName = (type) => {
     const names = {
@@ -191,17 +209,31 @@ export default function GameRoom({ roomCode, username, initialRoomData, preSelec
     return names[type] || type;
   };
 
+  // Get game icon
+  const getGameIcon = (type) => {
+    switch (type) {
+      case 'uno':
+        return <FaIdCard className="w-12 h-12 md:w-16 md:h-16" />;
+      case 'scribble':
+        return <IoBrushSharp className="w-12 h-12 md:w-16 md:h-16" />;
+      case 'truthordare':
+        return <MdTheaterComedy className="w-12 h-12 md:w-16 md:h-16" />;
+      default:
+        return <IoGameController className="w-12 h-12 md:w-16 md:h-16" />;
+    }
+  };
+
   // Render the game if started
   if (gameStarted && gameType) {
     console.log('🎮 Rendering game component:', gameType);
-    
+
     // Convert players to the format expected by game components
     const gamePlayers = players.map(p => ({
       username: p.username,
       score: p.score || 0,
       status: p.status || 'waiting'
     }));
-    
+
     switch (gameType) {
       case 'uno':
         return (
@@ -237,15 +269,14 @@ export default function GameRoom({ roomCode, username, initialRoomData, preSelec
       default:
         console.error('❌ Unknown game type:', gameType);
         return (
-          <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: colors.background }}>
+          <div className={`min-h-screen flex items-center justify-center ${colors.bg}`}>
             <div className="text-center">
-              <p className="text-2xl font-orbitron" style={{ color: colors.text }}>
+              <p className={`text-2xl font-display ${colors.text}`}>
                 Unknown game type: {gameType}
               </p>
               <button
                 onClick={handleLeaveGame}
-                className="mt-4 px-6 py-3 rounded-lg font-raleway font-bold"
-                style={{ background: colors.primary, color: '#fff' }}
+                className={`mt-4 px-6 py-3 rounded-lg font-accent font-bold ${colors.primaryBg} text-white`}
               >
                 Return to Lobby
               </button>
@@ -257,30 +288,53 @@ export default function GameRoom({ roomCode, username, initialRoomData, preSelec
 
   console.log('🎨 Rendering lobby with players:', players);
 
+  // Theme-based PixelSnow colors
+  const snowColor = theme === 'dark' ? '#00d9ff' : '#10b981';
+  const snowDensity = theme === 'dark' ? 0.12 : 0.08;
+  const snowBrightness = theme === 'dark' ? 0.5 : 0.35;
+
   // Lobby view
   return (
-    <div 
-      className="min-h-screen p-8"
-      style={{ backgroundColor: colors.background }}
-    >
-      <div className="max-w-4xl mx-auto">
+    <div className={`min-h-screen p-4 md:p-8 relative ${colors.bg} transition-colors duration-300`}>
+      {/* PixelSnow Background */}
+      <div className="fixed inset-0 z-0 pointer-events-none opacity-60">
+        <PixelSnow
+          color={snowColor}
+          flakeSize={0.008}
+          minFlakeSize={1.5}
+          pixelResolution={180}
+          speed={0.7}
+          density={snowDensity}
+          brightness={snowBrightness}
+          direction={135}
+          variant="round"
+        />
+      </div>
+
+      <div className="relative z-10 max-w-4xl mx-auto">
         {/* Header */}
         <div className="flex justify-between items-center mb-8">
           <div>
-            <h1 
-              className="text-4xl font-orbitron font-black"
-              style={{
-                background: `linear-gradient(135deg, ${colors.primary}, ${colors.secondary})`,
-                WebkitBackgroundClip: 'text',
-                WebkitTextFillColor: 'transparent'
-              }}
-            >
+            <h1 className={`font-display text-3xl md:text-4xl lg:text-5xl font-black ${colors.primary}`}>
               Game Room
             </h1>
-            <p className="font-poppins mt-2" style={{ color: colors.textSecondary }}>
-              Room Code: <span className="font-bold" style={{ color: colors.primary }}>{roomCode}</span>
-            </p>
-            <p className="font-poppins text-sm" style={{ color: colors.textSecondary }}>
+            <div className="flex items-center gap-2 mt-2">
+              <p className={`font-body text-sm md:text-base ${colors.textSecondary}`}>
+                Room Code:
+              </p>
+              <button
+                onClick={handleCopyCode}
+                className={`flex items-center gap-2 px-3 py-1 rounded-lg font-mono font-bold text-base md:text-lg transition-all hover:scale-105 border ${colors.border} ${colors.surface} ${colors.primary}`}
+              >
+                {roomCode}
+                {copied ? (
+                  <IoCheckmarkCircle className="w-4 h-4 text-green-500" />
+                ) : (
+                  <IoCopyOutline className="w-4 h-4" />
+                )}
+              </button>
+            </div>
+            <p className={`font-body text-xs md:text-sm mt-1 ${colors.textSecondary}`}>
               Status: <span className={isConnected ? 'text-green-500' : 'text-red-500'}>
                 {isConnected ? '● Connected' : '○ Disconnected'}
               </span>
@@ -288,35 +342,23 @@ export default function GameRoom({ roomCode, username, initialRoomData, preSelec
           </div>
           <button
             onClick={handleLeaveRoom}
-            className="px-6 py-3 rounded-lg font-raleway font-bold transition-all hover:scale-105 border"
-            style={{
-              background: 'rgba(239, 68, 68, 0.1)',
-              borderColor: 'rgba(239, 68, 68, 0.5)',
-              color: '#ef4444'
-            }}
+            className="px-4 md:px-6 py-2 md:py-3 rounded-lg font-accent font-bold transition-all hover:scale-105 border border-red-500/50 bg-red-500/10 text-red-500 hover:bg-red-500/20 backdrop-blur-xl"
           >
+            <IoArrowBack className="w-5 h-5 inline mr-2" />
             Leave Room
           </button>
         </div>
 
         {/* Game Type Display */}
         {gameType && (
-          <div 
-            className="mb-8 p-6 rounded-2xl border text-center"
-            style={{
-              background: `linear-gradient(135deg, ${colors.primary}10, ${colors.secondary}05)`,
-              borderColor: `${colors.primary}30`
-            }}
-          >
-            <p className="text-6xl mb-2">
-              {gameType === 'uno' && '🎴'}
-              {gameType === 'scribble' && '✏️'}
-              {gameType === 'truthordare' && '🎭'}
-            </p>
-            <h2 className="text-2xl font-orbitron font-bold" style={{ color: colors.text }}>
+          <div className={`mb-8 p-6 md:p-8 rounded-2xl border text-center backdrop-blur-xl ${colors.surface} ${colors.border}`}>
+            <div className={`w-20 h-20 md:w-24 md:h-24 mx-auto mb-4 rounded-2xl flex items-center justify-center ${colors.primaryBg}`}>
+              {getGameIcon(gameType)}
+            </div>
+            <h2 className={`font-display text-2xl md:text-3xl font-black mb-2 ${colors.text}`}>
               {getGameDisplayName(gameType)}
             </h2>
-            <p className="font-poppins mt-1" style={{ color: colors.textSecondary }}>
+            <p className={`font-body text-sm md:text-base ${colors.textSecondary}`}>
               {gameType === 'uno' && 'Classic card game action!'}
               {gameType === 'scribble' && 'Draw and guess!'}
               {gameType === 'truthordare' && 'Truth or Dare party game!'}
@@ -326,37 +368,37 @@ export default function GameRoom({ roomCode, username, initialRoomData, preSelec
 
         {/* Players List */}
         <div className="mb-8">
-          <h2 className="text-xl font-orbitron font-bold mb-4" style={{ color: colors.text }}>
+          <h2 className={`font-display text-xl md:text-2xl font-bold mb-4 flex items-center gap-2 ${colors.text}`}>
+            <IoPeopleSharp className="w-6 h-6" />
             Players ({players.length})
           </h2>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {players.map((player, index) => {
               const isPlayerHost = index === 0 || player.username === room?.host;
               const isCurrentUser = player.username === username;
-              
+
               return (
                 <div
                   key={player.username}
-                  className="p-4 rounded-lg border-2 transition-all"
-                  style={{
-                    background: isCurrentUser 
-                      ? `${colors.primary}20` 
-                      : 'rgba(0, 0, 0, 0.3)',
-                    borderColor: isCurrentUser 
-                      ? colors.primary 
-                      : `${colors.primary}30`
-                  }}
+                  className={`p-4 rounded-lg border-2 transition-all backdrop-blur-xl ${isCurrentUser
+                      ? `${colors.primaryBg}/20 ${colors.primaryBorder}`
+                      : `${colors.bgSecondary} ${colors.border}`
+                    }`}
                 >
                   <div className="flex items-center gap-3">
-                    <span className="text-2xl">
-                      {isPlayerHost ? '👑' : '👤'}
-                    </span>
+                    <div className={`w-10 h-10 rounded-full flex items-center justify-center ${isPlayerHost ? colors.primaryBg : colors.surface}`}>
+                      {isPlayerHost ? (
+                        <FaCrown className="w-5 h-5 text-white" />
+                      ) : (
+                        <FaUser className="w-5 h-5" />
+                      )}
+                    </div>
                     <div>
-                      <p className="font-raleway font-bold" style={{ color: colors.text }}>
+                      <p className={`font-accent font-bold ${colors.text}`}>
                         {player.username} {isCurrentUser && '(You)'}
                       </p>
                       {isPlayerHost && (
-                        <p className="text-sm" style={{ color: colors.primary }}>
+                        <p className={`text-xs font-body ${colors.primary}`}>
                           Host
                         </p>
                       )}
@@ -374,26 +416,19 @@ export default function GameRoom({ roomCode, username, initialRoomData, preSelec
             <button
               onClick={handleStartGame}
               disabled={players.length < 2}
-              className="px-12 py-4 rounded-lg font-raleway font-bold text-lg transition-all hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
-              style={{
-                background: players.length >= 2 
-                  ? `linear-gradient(135deg, ${colors.primary}, ${colors.secondary})`
-                  : 'rgba(100, 100, 100, 0.5)',
-                color: '#fff',
-                boxShadow: players.length >= 2 ? `0 0 30px ${colors.primary}60` : 'none'
-              }}
+              className={`px-8 md:px-12 py-3 md:py-4 rounded-lg font-accent font-bold text-base md:text-lg transition-all hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 shadow-xl ${players.length >= 2
+                  ? `${colors.primaryBg} ${colors.primaryHover} text-white`
+                  : 'bg-gray-500/50 text-gray-300'
+                }`}
             >
-              {players.length < 2 ? 'Need at least 2 players' : '🎮 Start Game'}
+              <span className="flex items-center gap-2 justify-center">
+                <IoGameController className="w-6 h-6" />
+                {players.length < 2 ? 'Need at least 2 players' : 'Start Game'}
+              </span>
             </button>
           ) : (
-            <div 
-              className="px-12 py-4 rounded-lg font-raleway font-bold text-lg"
-              style={{
-                background: 'rgba(100, 100, 100, 0.3)',
-                color: colors.textSecondary
-              }}
-            >
-              Waiting for <span style={{ color: colors.primary }}>{room?.host || players[0]?.username}</span> to start the game...
+            <div className={`px-8 md:px-12 py-3 md:py-4 rounded-lg font-accent font-bold text-base md:text-lg backdrop-blur-xl ${colors.surface} ${colors.textSecondary}`}>
+              Waiting for <span className={colors.primary}>{room?.host || players[0]?.username}</span> to start the game...
             </div>
           )}
         </div>
