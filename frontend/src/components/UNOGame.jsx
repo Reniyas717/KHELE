@@ -12,6 +12,7 @@ import {
   IoRefreshSharp
 } from 'react-icons/io5';
 import { FaIdCard } from 'react-icons/fa6';
+import UNOTable from './UNOTable';
 
 export default function UNOGame({ roomCode, username, players, initialGameState, onLeaveRoom }) {
   const { colors, theme, toggleTheme } = useTheme();
@@ -23,6 +24,8 @@ export default function UNOGame({ roomCode, username, players, initialGameState,
   const [isLoading, setIsLoading] = useState(true);
   const [gameOverData, setGameOverData] = useState(null);
   const [showGameOver, setShowGameOver] = useState(false);
+  const [useTableView, setUseTableView] = useState(true); // Toggle for table view
+  const [showWinProbability, setShowWinProbability] = useState(true); // Toggle for win probability
   const { sendMessage, on, isConnected } = useWebSocket();
   const listenersSetup = useRef(false);
   const handRequestSent = useRef(false);
