@@ -1,4 +1,4 @@
-// UNO Table Component - Realistic pool table design
+// UNO Table Component - Fully responsive design
 import { useState, useEffect } from 'react';
 import { useTheme } from '../context/ThemeContext';
 import { calculateWinProbabilities, getProbabilityColor } from '../utils/WinProbability';
@@ -12,7 +12,7 @@ const AVATARS = {
     4: '/avatars/avatar1.png',
 };
 
-// Get player position around table
+// Get player position around table - responsive
 function getPlayerPosition(index, totalPlayers, isCurrentUser) {
     if (isCurrentUser) return 'bottom';
 
@@ -71,10 +71,10 @@ export default function UNOTable({
                 ? 'linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%)'
                 : 'linear-gradient(135deg, #f5f3f0 0%, #e8e5e0 50%, #ddd9d3 100%)'
         }}>
-            {/* Wooden Table Border/Rail */}
-            <div className="absolute inset-0 p-4 md:p-8">
+            {/* Wooden Table Border/Rail - Responsive padding */}
+            <div className="absolute inset-0 p-2 sm:p-4 md:p-6 lg:p-8">
                 <div
-                    className="relative w-full h-full rounded-3xl shadow-2xl"
+                    className="relative w-full h-full rounded-2xl sm:rounded-3xl shadow-2xl"
                     style={{
                         background: theme === 'dark'
                             ? 'linear-gradient(145deg, #3d2817 0%, #5c3d2e 50%, #3d2817 100%)'
@@ -82,32 +82,20 @@ export default function UNOTable({
                         boxShadow: theme === 'dark'
                             ? 'inset 0 0 60px rgba(0,0,0,0.5), 0 20px 60px rgba(0,0,0,0.6)'
                             : 'inset 0 0 60px rgba(0,0,0,0.3), 0 20px 60px rgba(0,0,0,0.4)',
-                        border: theme === 'dark' ? '8px solid #2d1f12' : '8px solid #6b5638'
+                        border: theme === 'dark' ? '4px solid #2d1f12' : '4px solid #6b5638'
                     }}
                 >
-                    {/* Felt Table Surface */}
+                    {/* Felt Table Surface - Responsive inset */}
                     <div
-                        className="absolute inset-4 md:inset-6 rounded-2xl shadow-inner overflow-visible"
+                        className="absolute inset-2 sm:inset-3 md:inset-4 lg:inset-6 rounded-xl sm:rounded-2xl shadow-inner overflow-visible"
                         style={{
                             background: theme === 'dark'
                                 ? 'radial-gradient(ellipse at center, #1a4d2e 0%, #0d3d2a 50%, #0a2f1f 100%)'
                                 : 'radial-gradient(ellipse at center, #2d6a4f 0%, #1b4332 50%, #14372b 100%)',
                             boxShadow: 'inset 0 0 100px rgba(0,0,0,0.6), inset 0 0 50px rgba(0,0,0,0.4)',
                             backgroundImage: `
-                repeating-linear-gradient(
-                  0deg,
-                  transparent,
-                  transparent 2px,
-                  rgba(0,0,0,0.03) 2px,
-                  rgba(0,0,0,0.03) 4px
-                ),
-                repeating-linear-gradient(
-                  90deg,
-                  transparent,
-                  transparent 2px,
-                  rgba(0,0,0,0.03) 2px,
-                  rgba(0,0,0,0.03) 4px
-                )
+                repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,0,0,0.03) 2px, rgba(0,0,0,0.03) 4px),
+                repeating-linear-gradient(90deg, transparent, transparent 2px, rgba(0,0,0,0.03) 2px, rgba(0,0,0,0.03) 4px)
               `
                         }}
                     >
@@ -151,8 +139,8 @@ export default function UNOTable({
                             />
                         </div>
 
-                        {/* My hand at bottom */}
-                        <div className="absolute bottom-0 left-0 right-0 pb-2 md:pb-4 pt-20 md:pt-24">
+                        {/* My hand at bottom - Responsive padding */}
+                        <div className="absolute bottom-0 left-0 right-0 pb-1 sm:pb-2 md:pb-4 pt-16 sm:pt-20 md:pt-24">
                             <MyHand
                                 cards={myHand}
                                 onPlayCard={onPlayCard}
@@ -173,26 +161,10 @@ export default function UNOTable({
 // Action Card Animation Component
 function ActionCardAnimation({ type, theme }) {
     const animations = {
-        draw2: {
-            emoji: '➕2️⃣',
-            text: '+2 CARDS!',
-            color: '#ef4444',
-        },
-        wild_draw4: {
-            emoji: '➕4️⃣',
-            text: '+4 CARDS!',
-            color: '#8b5cf6',
-        },
-        skip: {
-            emoji: '⊘',
-            text: 'SKIPPED!',
-            color: '#f59e0b',
-        },
-        reverse: {
-            emoji: '⇄',
-            text: 'REVERSED!',
-            color: '#10b981',
-        },
+        draw2: { emoji: '➕2️⃣', text: '+2 CARDS!', color: '#ef4444' },
+        wild_draw4: { emoji: '➕4️⃣', text: '+4 CARDS!', color: '#8b5cf6' },
+        skip: { emoji: '⊘', text: 'SKIPPED!', color: '#f59e0b' },
+        reverse: { emoji: '⇄', text: 'REVERSED!', color: '#10b981' },
     };
 
     const anim = animations[type];
@@ -200,18 +172,13 @@ function ActionCardAnimation({ type, theme }) {
 
     return (
         <div className="absolute inset-0 z-50 flex items-center justify-center pointer-events-none animate-fade-in-out">
-            <div
-                className="text-center transform animate-bounce-scale"
-                style={{ color: anim.color }}
-            >
-                <div className="text-7xl md:text-9xl mb-4 drop-shadow-2xl animate-spin-slow">
+            <div className="text-center transform animate-bounce-scale" style={{ color: anim.color }}>
+                <div className="text-5xl sm:text-7xl md:text-9xl mb-2 md:mb-4 drop-shadow-2xl animate-spin-slow">
                     {anim.emoji}
                 </div>
                 <div
-                    className="text-3xl md:text-6xl font-black tracking-wider drop-shadow-2xl"
-                    style={{
-                        textShadow: `0 0 20px ${anim.color}, 0 0 40px ${anim.color}`,
-                    }}
+                    className="text-2xl sm:text-3xl md:text-6xl font-black tracking-wider drop-shadow-2xl"
+                    style={{ textShadow: `0 0 20px ${anim.color}, 0 0 40px ${anim.color}` }}
                 >
                     {anim.text}
                 </div>
@@ -220,85 +187,76 @@ function ActionCardAnimation({ type, theme }) {
     );
 }
 
-// Player seat component
+// Player seat component - Fully responsive
 function PlayerSeat({ player, position, isMe, isActive, avatar, probability, colors, theme }) {
     const positionStyles = {
-        'top': 'top-4 md:top-8 left-1/2 -translate-x-1/2',
-        'bottom': 'bottom-20 md:bottom-24 left-1/2 -translate-x-1/2',
-        'left': 'left-2 md:left-6 top-1/2 -translate-y-1/2',
-        'right': 'right-2 md:right-6 top-1/2 -translate-y-1/2',
-        'top-left': 'top-8 md:top-12 left-8 md:left-16',
-        'top-right': 'top-8 md:top-12 right-8 md:right-16',
+        'top': 'top-2 sm:top-6 md:top-8 left-1/2 -translate-x-1/2',
+        'bottom': 'bottom-16 sm:bottom-20 md:bottom-24 left-1/2 -translate-x-1/2',
+        'left': 'left-1 sm:left-2 md:left-6 top-1/2 -translate-y-1/2',
+        'right': 'right-1 sm:right-2 md:right-6 top-1/2 -translate-y-1/2',
+        'top-left': 'top-4 sm:top-8 md:top-12 left-4 sm:left-8 md:left-16',
+        'top-right': 'top-4 sm:top-8 md:top-12 right-4 sm:right-8 md:right-16',
     };
 
     return (
         <div className={`absolute ${positionStyles[position]} z-10`}>
             <div
                 className={`
-          relative p-3 md:p-4 rounded-xl backdrop-blur-xl
+          relative p-2 sm:p-3 md:p-4 rounded-lg sm:rounded-xl backdrop-blur-xl
           transition-all duration-300 hover:scale-105
-          ${isActive
-                        ? 'ring-4 ring-yellow-400 shadow-2xl animate-pulse-glow'
-                        : 'border-2'
-                    }
-          ${isMe ? 'ring-2 ring-cyan-400' : ''}
+          ${isActive ? 'ring-2 sm:ring-4 ring-yellow-400 shadow-2xl animate-pulse-glow' : 'border border-2'}
+          ${isMe ? 'ring-1 sm:ring-2 ring-cyan-400' : ''}
         `}
                 style={{
                     background: isActive
                         ? 'linear-gradient(135deg, rgba(251, 191, 36, 0.3) 0%, rgba(245, 158, 11, 0.2) 100%)'
-                        : theme === 'dark'
-                            ? 'rgba(30, 41, 59, 0.9)'
-                            : 'rgba(255, 255, 255, 0.9)',
-                    borderColor: isActive
-                        ? '#fbbf24'
-                        : theme === 'dark' ? 'rgba(71, 85, 105, 0.5)' : 'rgba(148, 163, 184, 0.5)',
-                    boxShadow: isActive
-                        ? '0 0 30px rgba(251, 191, 36, 0.5), 0 10px 30px rgba(0,0,0,0.3)'
-                        : '0 4px 20px rgba(0,0,0,0.2)'
+                        : theme === 'dark' ? 'rgba(30, 41, 59, 0.9)' : 'rgba(255, 255, 255, 0.9)',
+                    borderColor: isActive ? '#fbbf24' : theme === 'dark' ? 'rgba(71, 85, 105, 0.5)' : 'rgba(148, 163, 184, 0.5)',
+                    boxShadow: isActive ? '0 0 30px rgba(251, 191, 36, 0.5), 0 10px 30px rgba(0,0,0,0.3)' : '0 4px 20px rgba(0,0,0,0.2)'
                 }}
             >
-                <div className="flex flex-col items-center gap-2">
-                    {/* Avatar */}
+                <div className="flex flex-col items-center gap-1 sm:gap-2">
+                    {/* Avatar - Responsive sizing */}
                     <div
                         className={`
-              w-12 h-12 md:w-16 md:h-16 rounded-full overflow-hidden 
-              border-4 transition-all duration-300
+              w-8 h-8 sm:w-12 sm:h-12 md:w-16 md:h-16 rounded-full overflow-hidden
+              border-2 sm:border-4 transition-all duration-300
               ${isActive ? 'border-yellow-400 shadow-lg' : 'border-white/50'}
-              ${isMe ? 'ring-2 ring-cyan-400' : ''}
+              ${isMe ? 'ring-1 sm:ring-2 ring-cyan-400' : ''}
             `}
                     >
                         <img src={avatar} alt={player.name} className="w-full h-full object-cover" />
                     </div>
 
-                    {/* Player info */}
+                    {/* Player info - Responsive text */}
                     <div className="text-center">
-                        <p className={`font-bold text-xs md:text-sm ${theme === 'dark' ? 'text-white' : 'text-gray-900'}`}>
-                            {player.name} {isMe && '(You)'}
+                        <p className={`font-bold text-[10px] sm:text-xs md:text-sm ${theme === 'dark' ? 'text-white' : 'text-gray-900'}`}>
+                            {player.name.length > 8 ? player.name.substring(0, 8) + '...' : player.name} {isMe && '(You)'}
                         </p>
-                        <p className={`text-xs ${theme === 'dark' ? 'text-gray-300' : 'text-gray-600'}`}>
+                        <p className={`text-[9px] sm:text-xs ${theme === 'dark' ? 'text-gray-300' : 'text-gray-600'}`}>
                             {player.cardCount} cards
                         </p>
 
                         {probability !== null && (
-                            <p className={`text-xs font-bold mt-1 ${getProbabilityColor(probability)}`}>
+                            <p className={`text-[9px] sm:text-xs font-bold mt-0.5 sm:mt-1 ${getProbabilityColor(probability)}`}>
                                 {probability}%
                             </p>
                         )}
 
                         {player.finished && (
-                            <p className="text-xs mt-1 font-bold text-green-500 flex items-center gap-1">
+                            <p className="text-[9px] sm:text-xs mt-0.5 sm:mt-1 font-bold text-green-500">
                                 🏆 #{player.position}
                             </p>
                         )}
                     </div>
 
-                    {/* Cards fan for opponents */}
+                    {/* Cards fan for opponents - Responsive sizing */}
                     {!isMe && (
-                        <div className="flex -space-x-1 md:-space-x-2 mt-1">
+                        <div className="flex -space-x-1 mt-0.5 sm:mt-1">
                             {[...Array(Math.min(player.cardCount, 5))].map((_, i) => (
                                 <div
                                     key={i}
-                                    className="w-6 h-9 md:w-8 md:h-12 rounded border-2 border-white/30 shadow-lg"
+                                    className="w-4 h-6 sm:w-6 sm:h-9 md:w-8 md:h-12 rounded border border-white/30 shadow-lg"
                                     style={{
                                         background: 'linear-gradient(135deg, #dc2626 0%, #991b1b 100%)',
                                         transform: `rotate(${(i - 2) * 8}deg) translateY(${Math.abs(i - 2) * 2}px)`,
@@ -314,16 +272,10 @@ function PlayerSeat({ player, position, isMe, isActive, avatar, probability, col
     );
 }
 
-// Center table with deck and discard pile
+// Center table - Responsive sizing
 function CenterTable({ currentCard, deckSize, onDrawCard, isMyTurn, colors, theme, currentColor }) {
     const getCardColor = (color) => {
-        const colorMap = {
-            red: '#ef4444',
-            blue: '#3b82f6',
-            green: '#10b981',
-            yellow: '#eab308',
-            wild: '#8b5cf6'
-        };
+        const colorMap = { red: '#ef4444', blue: '#3b82f6', green: '#10b981', yellow: '#eab308', wild: '#8b5cf6' };
         return colorMap[color] || colorMap.wild;
     };
 
@@ -338,8 +290,8 @@ function CenterTable({ currentCard, deckSize, onDrawCard, isMyTurn, colors, them
     };
 
     return (
-        <div className="flex items-center gap-6 md:gap-10">
-            {/* Draw Pile */}
+        <div className="flex items-center gap-3 sm:gap-6 md:gap-10">
+            {/* Draw Pile - Responsive sizing */}
             <button
                 onClick={onDrawCard}
                 disabled={!isMyTurn}
@@ -348,51 +300,48 @@ function CenterTable({ currentCard, deckSize, onDrawCard, isMyTurn, colors, them
             >
                 <div
                     className={`
-            w-20 h-28 md:w-28 md:h-40 rounded-xl
+            w-14 h-20 sm:w-20 sm:h-28 md:w-28 md:h-40 rounded-lg sm:rounded-xl
             transition-all duration-300
             ${isMyTurn ? 'group-hover:scale-110 group-hover:-translate-y-2' : ''}
           `}
                     style={{
                         background: 'linear-gradient(135deg, #1e293b 0%, #0f172a 100%)',
-                        border: isMyTurn ? '4px solid #fbbf24' : '4px solid rgba(255,255,255,0.2)',
+                        border: isMyTurn ? '3px solid #fbbf24' : '3px solid rgba(255,255,255,0.2)',
                         boxShadow: isMyTurn
-                            ? '0 0 30px rgba(251, 191, 36, 0.4), 0 10px 30px rgba(0,0,0,0.5)'
-                            : '0 8px 20px rgba(0,0,0,0.4)'
+                            ? '0 0 20px rgba(251, 191, 36, 0.4), 0 10px 20px rgba(0,0,0,0.5)'
+                            : '0 8px 15px rgba(0,0,0,0.4)'
                     }}
                 >
                     <div className="absolute inset-0 flex flex-col items-center justify-center">
-                        <span className="text-4xl md:text-5xl mb-2">🎴</span>
+                        <span className="text-2xl sm:text-4xl md:text-5xl mb-1 sm:mb-2">🎴</span>
                         <div
-                            className="px-3 py-1 rounded-full text-xs font-bold"
-                            style={{
-                                background: 'rgba(0,0,0,0.5)',
-                                color: 'white'
-                            }}
+                            className="px-2 py-0.5 sm:px-3 sm:py-1 rounded-full text-[10px] sm:text-xs font-bold"
+                            style={{ background: 'rgba(0,0,0,0.5)', color: 'white' }}
                         >
                             {deckSize}
                         </div>
                     </div>
                 </div>
-                <div className="absolute -bottom-8 left-1/2 -translate-x-1/2 text-xs font-bold text-white/80 whitespace-nowrap">
+                <div className="absolute -bottom-6 sm:-bottom-8 left-1/2 -translate-x-1/2 text-[10px] sm:text-xs font-bold text-white/80 whitespace-nowrap">
                     DRAW
                 </div>
             </button>
 
-            {/* Discard Pile */}
+            {/* Discard Pile - Responsive sizing */}
             <div className="relative">
                 <div
-                    className="w-20 h-28 md:w-28 md:h-40 rounded-xl overflow-hidden"
+                    className="w-14 h-20 sm:w-20 sm:h-28 md:w-28 md:h-40 rounded-lg sm:rounded-xl overflow-hidden"
                     style={{
                         background: currentCard ? getCardColor(currentColor) : '#1e293b',
-                        border: '4px solid rgba(255,255,255,0.3)',
+                        border: '3px solid rgba(255,255,255,0.3)',
                         boxShadow: currentCard
-                            ? `0 0 40px ${getCardColor(currentColor)}60, 0 10px 30px rgba(0,0,0,0.5)`
-                            : '0 8px 20px rgba(0,0,0,0.4)'
+                            ? `0 0 30px ${getCardColor(currentColor)}60, 0 10px 20px rgba(0,0,0,0.5)`
+                            : '0 8px 15px rgba(0,0,0,0.4)'
                     }}
                 >
                     {currentCard && (
                         <div className="absolute inset-0 flex flex-col items-center justify-center animate-card-flip">
-                            <span className="text-4xl md:text-6xl font-black text-white drop-shadow-2xl">
+                            <span className="text-3xl sm:text-4xl md:text-6xl font-black text-white drop-shadow-2xl">
                                 {getCardDisplay(currentCard)}
                             </span>
                         </div>
@@ -402,7 +351,7 @@ function CenterTable({ currentCard, deckSize, onDrawCard, isMyTurn, colors, them
                 {/* Current color indicator */}
                 {currentColor && (
                     <div
-                        className="absolute -bottom-8 left-1/2 -translate-x-1/2 px-3 py-1 rounded-full text-xs font-bold text-white shadow-lg border-2 border-white/50 capitalize whitespace-nowrap"
+                        className="absolute -bottom-6 sm:-bottom-8 left-1/2 -translate-x-1/2 px-2 py-0.5 sm:px-3 sm:py-1 rounded-full text-[10px] sm:text-xs font-bold text-white shadow-lg border-2 border-white/50 capitalize whitespace-nowrap"
                         style={{ background: getCardColor(currentColor) }}
                     >
                         {currentColor}
@@ -413,16 +362,10 @@ function CenterTable({ currentCard, deckSize, onDrawCard, isMyTurn, colors, them
     );
 }
 
-// My hand component
+// My hand component - Fully responsive
 function MyHand({ cards, onPlayCard, isMyTurn, canPlayCard, colors, theme, showToast }) {
     const getCardColor = (card) => {
-        const colorMap = {
-            red: '#ef4444',
-            blue: '#3b82f6',
-            green: '#10b981',
-            yellow: '#eab308',
-            wild: '#8b5cf6'
-        };
+        const colorMap = { red: '#ef4444', blue: '#3b82f6', green: '#10b981', yellow: '#eab308', wild: '#8b5cf6' };
         return colorMap[card?.color] || colorMap.wild;
     };
 
@@ -452,7 +395,7 @@ function MyHand({ cards, onPlayCard, isMyTurn, canPlayCard, colors, theme, showT
     };
 
     return (
-        <div className="flex justify-center items-end gap-1 md:gap-2 pb-2 md:pb-4 overflow-x-auto px-2">
+        <div className="flex justify-center items-end gap-0.5 sm:gap-1 md:gap-2 pb-1 sm:pb-2 md:pb-4 overflow-x-auto px-1 sm:px-2">
             {cards.map((card, index) => {
                 const playable = isMyTurn && canPlayCard(card);
                 const cardColor = getCardColor(card);
@@ -463,10 +406,10 @@ function MyHand({ cards, onPlayCard, isMyTurn, canPlayCard, colors, theme, showT
                         onClick={() => handleCardClick(card, index)}
                         disabled={!isMyTurn}
                         className={`
-              w-14 h-20 md:w-20 md:h-28 rounded-xl
+              w-10 h-14 sm:w-14 sm:h-20 md:w-20 md:h-28 rounded-md sm:rounded-lg md:rounded-xl
               transform transition-all duration-200 flex-shrink-0
               ${playable
-                                ? 'hover:-translate-y-8 hover:scale-110 cursor-pointer animate-glow-pulse'
+                                ? 'hover:-translate-y-4 sm:hover:-translate-y-6 md:hover:-translate-y-8 hover:scale-110 cursor-pointer animate-glow-pulse'
                                 : isMyTurn
                                     ? 'cursor-not-allowed opacity-50 grayscale hover:opacity-70'
                                     : 'opacity-60 cursor-not-allowed'
@@ -474,11 +417,11 @@ function MyHand({ cards, onPlayCard, isMyTurn, canPlayCard, colors, theme, showT
             `}
                         style={{
                             background: `linear-gradient(135deg, ${cardColor} 0%, ${cardColor}dd 100%)`,
-                            border: playable ? '4px solid #fbbf24' : '3px solid rgba(255,255,255,0.3)',
+                            border: playable ? '2px solid #fbbf24' : '2px solid rgba(255,255,255,0.3)',
                             boxShadow: playable
-                                ? `0 0 30px ${cardColor}90, 0 0 50px rgba(251, 191, 36, 0.6), 0 10px 30px rgba(0,0,0,0.5)`
-                                : `0 4px 15px rgba(0,0,0,0.4)`,
-                            transform: `rotate(${(index - cards.length / 2) * 3}deg)`,
+                                ? `0 0 20px ${cardColor}90, 0 0 30px rgba(251, 191, 36, 0.6), 0 8px 20px rgba(0,0,0,0.5)`
+                                : `0 4px 10px rgba(0,0,0,0.4)`,
+                            transform: `rotate(${(index - cards.length / 2) * 2}deg)`,
                         }}
                         title={
                             !isMyTurn
@@ -489,7 +432,7 @@ function MyHand({ cards, onPlayCard, isMyTurn, canPlayCard, colors, theme, showT
                         }
                     >
                         <div className="flex items-center justify-center h-full">
-                            <span className="text-2xl md:text-3xl font-black text-white drop-shadow-lg">
+                            <span className="text-base sm:text-xl md:text-3xl font-black text-white drop-shadow-lg">
                                 {getCardDisplay(card)}
                             </span>
                         </div>
@@ -499,5 +442,3 @@ function MyHand({ cards, onPlayCard, isMyTurn, canPlayCard, colors, theme, showT
         </div>
     );
 }
-
-
