@@ -16,7 +16,7 @@ import {
   IoCameraOutline,
   IoCheckmarkCircleSharp
 } from 'react-icons/io5';
-import {MdOutlineMouse} from 'react-icons/md'
+import { MdOutlineMouse } from 'react-icons/md'
 
 export default function ScribbleGame({ roomCode, username, players, initialGameState, onLeaveRoom }) {
   const { colors, theme, toggleTheme } = useTheme();
@@ -459,7 +459,7 @@ export default function ScribbleGame({ roomCode, username, players, initialGameS
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 md:gap-8">
           {/* Canvas Area */}
-          <div className="lg:col-span-2">
+          <div className="lg:col-span-2 w-full">
             <div
               className={`p-4 md:p-6 rounded-2xl border backdrop-blur-xl ${colors.surface} ${colors.border}`}
             >
@@ -495,7 +495,7 @@ export default function ScribbleGame({ roomCode, username, players, initialGameS
 
               {/* Show message if round hasn't started */}
               {!roundStarted ? (
-                <div className={`w-full h-[400px] md:h-[500px] lg:h-[600px] flex items-center justify-center rounded-lg border-4 border-dashed ${colors.border}`}>
+                <div className={`w-full h-[300px] md:h-[400px] lg:h-[500px] flex items-center justify-center rounded-lg border-4 border-dashed ${colors.border}`}>
                   <div className="text-center">
                     <p className="text-5xl md:text-6xl mb-4">⏳</p>
                     <p className={`text-xl md:text-2xl font-display font-bold ${colors.text}`}>

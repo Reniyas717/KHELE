@@ -20,6 +20,15 @@ const playerSchema = new mongoose.Schema({
   hasGuessed: {
     type: Boolean,
     default: false
+  },
+  isBot: {
+    type: Boolean,
+    default: false
+  },
+  difficulty: {
+    type: String,
+    enum: ['easy', 'medium', 'hard'],
+    default: 'medium'
   }
 });
 

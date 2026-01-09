@@ -178,12 +178,33 @@ export default function UNOGame({ roomCode, username, players, initialGameState,
       console.log('🏆 GAME_OVER received:', data);
       const payload = data.payload || data;
 
+      // Map backend rankings to frontend format
+      const rankings = (payload.rankings || []).map((rank, index) => ({
+        name: rank.username,
+        position: rank.position || (index + 1),
+        points: calculatePoints(rank.position || (index + 1)) // Points based on position
+      }));
+
+      console.log('📊 Mapped rankings:', rankings);
+
       setGameOverData({
-        rankings: payload.rankings || [],
-        finalScores: payload.finalScores || []
+        rankings,
+        finalScores: rankings // Use same data for both
       });
       setShowGameOver(true);
     });
+
+    // Helper function to calculate points based on position
+    function calculatePoints(position) {
+      const pointsMap = {
+        1: 100, // 1st place
+        2: 75,  // 2nd place
+        3: 50,  // 3rd place
+        4: 25,  // 4th place
+        5: 10   // 5th place
+      };
+      return pointsMap[position] || 5; // Default 5 points for 6th+ place
+    }
 
     const unsubError = on('ERROR', (data) => {
       console.error('❌ ERROR received:', data);
@@ -464,10 +485,10 @@ export default function UNOGame({ roomCode, username, players, initialGameState,
                 <div
                   key={player.name || index}
                   className={`p-3 md:p-4 rounded-lg border-2 transition-all backdrop-blur-xl ${hasFinished
-                      ? 'bg-green-500/10 border-green-500 opacity-70'
-                      : isCurrentPlayer
-                        ? `${colors.primaryBg}/20 ${colors.primaryBorder} shadow-lg`
-                        : `${colors.surface} ${colors.border}`
+                    ? 'bg-green-500/10 border-green-500 opacity-70'
+                    : isCurrentPlayer
+                      ? `${colors.primaryBg}/20 ${colors.primaryBorder} shadow-lg`
+                      : `${colors.surface} ${colors.border}`
                     }`}
                 >
                   <p className={`font-accent font-bold text-sm md:text-base ${colors.text}`}>
@@ -592,10 +613,10 @@ export default function UNOGame({ roomCode, username, players, initialGameState,
                       <div
                         key={card.id || `${card.color}-${card.value}-${index}`}
                         className={`w-20 h-32 md:w-24 md:h-36 rounded-lg flex items-center justify-center text-3xl md:text-4xl font-black transition-all ${playable
-                            ? 'cursor-pointer hover:scale-125 hover:-translate-y-4 shadow-2xl'
-                            : isMyTurn
-                              ? 'cursor-not-allowed opacity-60'
-                              : 'opacity-80'
+                          ? 'cursor-pointer hover:scale-125 hover:-translate-y-4 shadow-2xl'
+                          : isMyTurn
+                            ? 'cursor-not-allowed opacity-60'
+                            : 'opacity-80'
                           }`}
                         style={{
                           background: cardColor,
@@ -654,11 +675,11 @@ export default function UNOGame({ roomCode, username, players, initialGameState,
                         yellow: '#eab308'
                       }[color],
                       boxShadow: `0 0 40px ${{
-                          red: '#ef4444',
-                          blue: '#3b82f6',
-                          green: '#10b981',
-                          yellow: '#eab308'
-                        }[color]
+                        red: '#ef4444',
+                        blue: '#3b82f6',
+                        green: '#10b981',
+                        yellow: '#eab308'
+                      }[color]
                         }60`
                     }}
                     onClick={() => handleColorChoice(color)}
@@ -695,10 +716,10 @@ export default function UNOGame({ roomCode, username, players, initialGameState,
                   <div
                     key={player.name}
                     className={`p-4 rounded-lg border-2 transition-all backdrop-blur-xl ${index === 0
-                        ? `${colors.primaryBg}/20 ${colors.primaryBorder}`
-                        : player.name === username
-                          ? `${colors.secondaryBg}/20 ${colors.secondaryBorder}`
-                          : `${colors.surface} ${colors.border}`
+                      ? `${colors.primaryBg}/20 ${colors.primaryBorder}`
+                      : player.name === username
+                        ? `${colors.secondaryBg}/20 ${colors.secondaryBorder}`
+                        : `${colors.surface} ${colors.border}`
                       }`}
                   >
                     <div className="flex items-center justify-between">

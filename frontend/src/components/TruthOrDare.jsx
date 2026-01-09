@@ -337,15 +337,31 @@ export default function TruthOrDare({ roomCode, username, players, onLeaveGame }
 
   if (isLoadingAPI) {
     return (
-      <div className={`flex items-center justify-center min-h-screen ${colors.bg} transition-colors duration-300`}>
-        <div className="text-center">
-          <div className="text-8xl mb-4 animate-bounce">
-            <MdTheaterComedy className="w-24 h-24 mx-auto" />
+      <div className={`flex items-center justify-center min-h-screen ${colors.bg} transition-colors duration-300 p-4`}>
+        <div className="text-center max-w-md w-full">
+          {/* Animated Icon */}
+          <div className="relative mb-8">
+            <div className="absolute inset-0 flex items-center justify-center">
+              <div className={`w-32 h-32 rounded-full animate-ping ${colors.primaryBg} opacity-20`} />
+            </div>
+            <div className="relative flex items-center justify-center">
+              <MdTheaterComedy className={`w-24 h-24 animate-bounce ${colors.primary}`} />
+            </div>
           </div>
-          <h2 className={`text-3xl font-display font-bold mb-2 ${colors.text}`}>Loading Truth or Dare...</h2>
-          <p className={`font-body ${colors.textSecondary}`}>Fetching spicy questions...</p>
-          <div className="mt-4 flex justify-center gap-1">
-            {[0, 1, 2].map(i => (
+
+          {/* Title */}
+          <h2 className={`text-2xl md:text-3xl font-display font-bold mb-4 ${colors.text}`}>
+            Loading Truth or Dare...
+          </h2>
+
+          {/* Status Message */}
+          <p className={`font-body text-base md:text-lg mb-6 ${colors.textSecondary}`}>
+            Fetching spicy questions from the server...
+          </p>
+
+          {/* Progress Dots */}
+          <div className="flex justify-center gap-2 mb-6">
+            {[0, 1, 2, 3, 4].map(i => (
               <div
                 key={i}
                 className={`w-3 h-3 rounded-full animate-bounce ${colors.primaryBg}`}
@@ -353,6 +369,22 @@ export default function TruthOrDare({ roomCode, username, players, onLeaveGame }
               />
             ))}
           </div>
+
+          {/* Loading Bar */}
+          <div className={`w-full h-2 rounded-full overflow-hidden ${colors.bgSecondary}`}>
+            <div
+              className={`h-full ${colors.primaryBg} animate-pulse`}
+              style={{
+                width: '70%',
+                animation: 'pulse 1.5s ease-in-out infinite'
+              }}
+            />
+          </div>
+
+          {/* Tip */}
+          <p className={`text-xs md:text-sm mt-6 italic ${colors.textSecondary}`}>
+            💡 Tip: The more honest you are, the more fun the game!
+          </p>
         </div>
       </div>
     );
@@ -417,8 +449,8 @@ export default function TruthOrDare({ roomCode, username, players, onLeaveGame }
             <div
               key={player.username}
               className={`p-3 md:p-4 rounded-xl transition-all duration-300 backdrop-blur-xl border ${player.username === selectedPlayer
-                  ? `${colors.primaryBg} ${colors.primaryBorder} scale-105`
-                  : `${colors.surface} ${colors.border}`
+                ? `${colors.primaryBg} ${colors.primaryBorder} scale-105`
+                : `${colors.surface} ${colors.border}`
                 }`}
             >
               <div className={`font-accent font-bold text-base md:text-lg truncate ${colors.text}`}>
@@ -459,8 +491,8 @@ export default function TruthOrDare({ roomCode, username, players, onLeaveGame }
                         key={rating}
                         onClick={() => updateSettings({ ...settings, rating })}
                         className={`px-6 py-3 md:px-8 md:py-4 rounded-xl font-accent font-bold text-base md:text-lg transition-all hover:scale-105 ${settings.rating === rating
-                            ? `${colors.primaryBg} ${colors.primaryHover} text-white shadow-xl`
-                            : `${colors.surface} ${colors.text} ${colors.border} border`
+                          ? `${colors.primaryBg} ${colors.primaryHover} text-white shadow-xl`
+                          : `${colors.surface} ${colors.text} ${colors.border} border`
                           }`}
                       >
                         {rating}
@@ -496,8 +528,8 @@ export default function TruthOrDare({ roomCode, username, players, onLeaveGame }
                   onClick={startGame}
                   disabled={players.length < 2}
                   className={`w-full py-5 md:py-6 rounded-xl font-accent font-bold text-xl md:text-2xl transition-all ${players.length < 2
-                      ? 'bg-gray-500/50 text-gray-300 cursor-not-allowed'
-                      : `${colors.primaryBg} ${colors.primaryHover} text-white hover:scale-[1.02] shadow-2xl animate-pulse`
+                    ? 'bg-gray-500/50 text-gray-300 cursor-not-allowed'
+                    : `${colors.primaryBg} ${colors.primaryHover} text-white hover:scale-[1.02] shadow-2xl animate-pulse`
                     }`}
                 >
                   {players.length < 2 ? '⏳ Waiting for players...' : '🚀 Start Game!'}
@@ -779,8 +811,8 @@ export default function TruthOrDare({ roomCode, username, players, onLeaveGame }
         {gameState === 'rating' && selectedCard && (
           <div className={`rounded-2xl p-6 md:p-8 backdrop-blur-xl border ${colors.surface} ${colors.border}`}>
             <div className={`text-center mb-8 p-6 md:p-8 rounded-2xl ${selectedCard.type === 'truth'
-                ? 'bg-gradient-to-br from-blue-500/30 to-indigo-600/30 border-2 border-blue-400/50'
-                : 'bg-gradient-to-br from-red-500/30 to-orange-600/30 border-2 border-red-400/50'
+              ? 'bg-gradient-to-br from-blue-500/30 to-indigo-600/30 border-2 border-blue-400/50'
+              : 'bg-gradient-to-br from-red-500/30 to-orange-600/30 border-2 border-red-400/50'
               }`}>
               <div className="text-5xl md:text-6xl mb-4">{selectedCard.type === 'truth' ? '🤔' : '🔥'}</div>
               <h2 className={`text-xl md:text-2xl lg:text-3xl font-display font-bold mb-4 uppercase ${colors.text}`}>{selectedCard.type}</h2>
@@ -874,10 +906,10 @@ export default function TruthOrDare({ roomCode, username, players, onLeaveGame }
                   <div
                     key={playerName}
                     className={`p-4 rounded-lg border-2 transition-all backdrop-blur-xl ${index === 0
-                        ? `${colors.primaryBg}/20 ${colors.primaryBorder}`
-                        : playerName === username
-                          ? `${colors.secondaryBg}/20 ${colors.secondaryBorder}`
-                          : `${colors.surface} ${colors.border}`
+                      ? `${colors.primaryBg}/20 ${colors.primaryBorder}`
+                      : playerName === username
+                        ? `${colors.secondaryBg}/20 ${colors.secondaryBorder}`
+                        : `${colors.surface} ${colors.border}`
                       }`}
                   >
                     <div className="flex items-center justify-between">

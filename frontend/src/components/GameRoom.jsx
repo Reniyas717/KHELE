@@ -29,6 +29,10 @@ export default function GameRoom({ roomCode, username, initialRoomData, preSelec
   const isLeavingIntentionally = useRef(false);
   const listenersSetup = useRef(false);
 
+  // Bot configuration state
+  const [botCount, setBotCount] = useState(0);
+  const [botDifficulty, setBotDifficulty] = useState('medium');
+
   // Get players array safely
   const isHost = players[0]?.username === username || room?.host === username;
 
@@ -165,12 +169,14 @@ export default function GameRoom({ roomCode, username, initialRoomData, preSelec
 
   const handleStartGame = async () => {
     try {
-      console.log('🎮 Host starting game:', { gameType, roomCode, username });
+      console.log('🎮 Host starting game:', { gameType, roomCode, username, botCount, botDifficulty });
 
       sendMessage('START_GAME', {
         roomCode,
         username,
-        gameType: gameType
+        gameType: gameType,
+        botCount, // Send bot configuration
+        botDifficulty
       });
 
       console.log('✅ START_GAME message sent');
@@ -366,40 +372,115 @@ export default function GameRoom({ roomCode, username, initialRoomData, preSelec
           </div>
         )}
 
+        {/* Bot Configuration (Host Only) */}
+        {isHost && !gameStarted && (
+          <div className={`mb-8 p-6 md:p-8 rounded-2xl border backdrop-blur-xl ${colors.surface} ${colors.border}`}>
+            <h2 className={`font-display text-xl md:text-2xl font-bold mb-6 ${colors.text}`}>
+              🤖 Bot Players
+            </h2>
+
+            {/* Bot Count Selector */}
+            <div className="mb-6">
+              <label className={`block font-accent font-bold mb-3 text-base md:text-lg ${colors.text}`}>
+                Number of Bots: <span className={colors.primary}>{botCount}</span>
+              </label>
+              <div className="flex gap-3 flex-wrap">
+                {[0, 1, 2, 3].map((count) => (
+                  <button
+                    key={count}
+                    onClick={() => setBotCount(count)}
+                    className={`px-6 py-3 rounded-lg font-accent font-bold text-base transition-all hover:scale-105 ${botCount === count
+                      ? `${colors.primaryBg} ${colors.primaryHover} text-white shadow-lg`
+                      : `${colors.surface} ${colors.text} ${colors.border} border`
+                      }`}
+                  >
+                    {count === 0 ? 'No Bots' : `${count} Bot${count > 1 ? 's' : ''}`}
+                  </button>
+                ))}
+              </div>
+              <p className={`text-xs md:text-sm mt-2 ${colors.textSecondary}`}>
+                {botCount === 0 && '👥 Play with real players only'}
+                {botCount === 1 && '🤖 Add 1 AI opponent'}
+                {botCount === 2 && '🤖🤖 Add 2 AI opponents'}
+                {botCount === 3 && '🤖🤖🤖 Add 3 AI opponents'}
+              </p>
+            </div>
+
+            {/* Bot Difficulty Selector */}
+            {botCount > 0 && (
+              <div>
+                <label className={`block font-accent font-bold mb-3 text-base md:text-lg ${colors.text}`}>
+                  Bot Difficulty
+                </label>
+                <div className="flex gap-3 flex-wrap">
+                  {['easy', 'medium', 'hard'].map((diff) => (
+                    <button
+                      key={diff}
+                      onClick={() => setBotDifficulty(diff)}
+                      className={`px-6 py-3 rounded-lg font-accent font-bold text-base capitalize transition-all hover:scale-105 ${botDifficulty === diff
+                        ? `${colors.primaryBg} ${colors.primaryHover} text-white shadow-lg`
+                        : `${colors.surface} ${colors.text} ${colors.border} border`
+                        }`}
+                    >
+                      {diff}
+                    </button>
+                  ))}
+                </div>
+                <p className={`text-xs md:text-sm mt-2 ${colors.textSecondary}`}>
+                  {botDifficulty === 'easy' && '😊 Easy - Bots make simple decisions'}
+                  {botDifficulty === 'medium' && '🎯 Medium - Balanced bot strategy'}
+                  {botDifficulty === 'hard' && '🔥 Hard - Smart and challenging bots'}
+                </p>
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Players List */}
         <div className="mb-8">
           <h2 className={`font-display text-xl md:text-2xl font-bold mb-4 flex items-center gap-2 ${colors.text}`}>
             <IoPeopleSharp className="w-6 h-6" />
-            Players ({players.length})
+            Players ({players.length}{botCount > 0 && ` + ${botCount} bot${botCount > 1 ? 's' : ''}`})
           </h2>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {players.map((player, index) => {
               const isPlayerHost = index === 0 || player.username === room?.host;
               const isCurrentUser = player.username === username;
+              const isPlayerBot = player.isBot || false;
 
               return (
                 <div
                   key={player.username}
                   className={`p-4 rounded-lg border-2 transition-all backdrop-blur-xl ${isCurrentUser
-                      ? `${colors.primaryBg}/20 ${colors.primaryBorder}`
+                    ? `${colors.primaryBg}/20 ${colors.primaryBorder}`
+                    : isPlayerBot
+                      ? `${colors.secondaryBg}/10 ${colors.secondaryBorder}`
                       : `${colors.bgSecondary} ${colors.border}`
                     }`}
                 >
                   <div className="flex items-center gap-3">
-                    <div className={`w-10 h-10 rounded-full flex items-center justify-center ${isPlayerHost ? colors.primaryBg : colors.surface}`}>
+                    <div className={`w-10 h-10 rounded-full flex items-center justify-center ${isPlayerHost ? colors.primaryBg : isPlayerBot ? colors.secondaryBg : colors.surface
+                      }`}>
                       {isPlayerHost ? (
                         <FaCrown className="w-5 h-5 text-white" />
+                      ) : isPlayerBot ? (
+                        <span className="text-lg">🤖</span>
                       ) : (
                         <FaUser className="w-5 h-5" />
                       )}
                     </div>
                     <div>
                       <p className={`font-accent font-bold ${colors.text}`}>
-                        {player.username} {isCurrentUser && '(You)'}
+                        {player.username} {isCurrentUser && '(You)'} {isPlayerBot && '(Bot)'}
                       </p>
                       {isPlayerHost && (
                         <p className={`text-xs font-body ${colors.primary}`}>
                           Host
+                        </p>
+                      )}
+                      {isPlayerBot && player.difficulty && (
+                        <p className={`text-xs font-body capitalize ${colors.secondary}`}>
+                          {player.difficulty} difficulty
                         </p>
                       )}
                     </div>
@@ -415,15 +496,15 @@ export default function GameRoom({ roomCode, username, initialRoomData, preSelec
           {isHost ? (
             <button
               onClick={handleStartGame}
-              disabled={players.length < 2}
-              className={`px-8 md:px-12 py-3 md:py-4 rounded-lg font-accent font-bold text-base md:text-lg transition-all hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 shadow-xl ${players.length >= 2
-                  ? `${colors.primaryBg} ${colors.primaryHover} text-white`
-                  : 'bg-gray-500/50 text-gray-300'
+              disabled={players.length + botCount < 2}
+              className={`px-8 md:px-12 py-3 md:py-4 rounded-lg font-accent font-bold text-base md:text-lg transition-all hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 shadow-xl ${players.length + botCount >= 2
+                ? `${colors.primaryBg} ${colors.primaryHover} text-white`
+                : 'bg-gray-500/50 text-gray-300'
                 }`}
             >
               <span className="flex items-center gap-2 justify-center">
                 <IoGameController className="w-6 h-6" />
-                {players.length < 2 ? 'Need at least 2 players' : 'Start Game'}
+                {players.length + botCount < 2 ? 'Need at least 2 players' : 'Start Game'}
               </span>
             </button>
           ) : (
