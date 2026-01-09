@@ -1223,22 +1223,24 @@ async function handlePlayCard(ws, payload) {
     // Calculate next player (skip finished players)
     let nextIndex = (gameState.currentPlayerIndex + gameState.direction + gameState.players.length) % gameState.players.length;
 
-    // Skip finished players
+    // Skip finished players for the purpose of determining who receives draw cards
     let attempts = 0;
     while (gameState.finishedPlayers.includes(gameState.players[nextIndex].username) && attempts < gameState.players.length) {
-      console.log(`⏭️ Skipping finished player: ${gameState.players[nextIndex].username}`);
+      console.log(`⏭️ Skipping finished player for draw card recipient: ${gameState.players[nextIndex].username}`);
       nextIndex = (nextIndex + gameState.direction + gameState.players.length) % gameState.players.length;
       attempts++;
     }
 
     if (attempts >= gameState.players.length) {
-      console.error('❌ All players finished - this should not happen');
+      console.error('❌ All players finished - this should not happen when determining draw recipient');
       return;
     }
 
-    // Handle draw cards
+    // Handle draw cards (give to this determined NEXT player)
     if (drawAmount > 0) {
       const nextPlayer = gameState.players[nextIndex].username;
+      console.log(`📤 Giving ${drawAmount} cards to NEXT player: ${nextPlayer}`);
+
       for (let i = 0; i < drawAmount; i++) {
         if (gameState.deck.length === 0) {
           // Reshuffle discard pile
@@ -1254,8 +1256,9 @@ async function handlePlayCard(ws, payload) {
       console.log(`📤 ${nextPlayer} drew ${drawAmount} cards`);
     }
 
-    // Skip next player if needed
+    // Skip next player if needed (for skip/reverse cards)
     if (skipNext) {
+      console.log(`⏭️ Skipping next player due to skip/reverse`);
       nextIndex = (nextIndex + gameState.direction + gameState.players.length) % gameState.players.length;
     }
 
