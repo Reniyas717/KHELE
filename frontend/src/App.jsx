@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { Analytics } from '@vercel/analytics/react';
 import Login from './components/Login';
 import Lobby from './components/Lobby';
 import GameRoom from './components/GameRoom';
@@ -103,6 +104,7 @@ function App() {
       <WebSocketProvider>
         <Router>
           <AppContent />
+          <Analytics />
         </Router>
       </WebSocketProvider>
     </ThemeProvider>
