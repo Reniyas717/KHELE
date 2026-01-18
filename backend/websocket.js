@@ -2,6 +2,16 @@ const WebSocket = require('ws');
 const GameRoom = require('./models/GameRoom');
 const { initScribbleGame, handleGuess, nextRound, selectWord } = require('./controllers/scribbleGame');
 const { initUNOGame, playCard, drawCard } = require('./controllers/unoGame');
+const {
+  initMonopolyGame,
+  rollDice,
+  buyProperty,
+  buildHouse,
+  mortgageProperty,
+  endTurn,
+  useJailCard,
+  payJailFee
+} = require('./controllers/monopolyGame');
 
 // Store active connections
 const clients = new Map(); // username -> { ws, roomCode }
@@ -113,6 +123,34 @@ function initWebSocket(server) {
 
           case 'GAME_STARTED':
             await handleGameStartedBroadcast(ws, data.payload);
+            break;
+
+          case 'MONOPOLY_ROLL_DICE':
+            await handleMonopolyRollDice(ws, data.payload);
+            break;
+
+          case 'MONOPOLY_BUY_PROPERTY':
+            await handleMonopolyBuyProperty(ws, data.payload);
+            break;
+
+          case 'MONOPOLY_BUILD_HOUSE':
+            await handleMonopolyBuildHouse(ws, data.payload);
+            break;
+
+          case 'MONOPOLY_MORTGAGE_PROPERTY':
+            await handleMonopolyMortgageProperty(ws, data.payload);
+            break;
+
+          case 'MONOPOLY_END_TURN':
+            await handleMonopolyEndTurn(ws, data.payload);
+            break;
+
+          case 'MONOPOLY_USE_JAIL_CARD':
+            await handleMonopolyUseJailCard(ws, data.payload);
+            break;
+
+          case 'MONOPOLY_PAY_JAIL_FEE':
+            await handleMonopolyPayJailFee(ws, data.payload);
             break;
 
           default:
@@ -532,6 +570,19 @@ async function handleStartGame(ws, payload) {
     } else if (actualGameType === 'truthordare') {
       // Truth or Dare doesn't need initial game state
       gameState = null;
+    } else if (actualGameType === 'monopoly') {
+      // Initialize Monopoly game
+      gameState = initMonopolyGame(room.players);
+      room.gameState = gameState;
+      room.markModified('gameState');
+      await room.save();
+      console.log('🎲 Monopoly game initialized');
+
+      // If first player is a bot, trigger their turn
+      const firstPlayer = gameState.players[0];
+      if (firstPlayer && firstPlayer.isBot) {
+        console.log(`🤖 First player is bot: ${firstPlayer.username}, will trigger turn after game starts`);
+      }
     }
 
     // Final save for room status
@@ -1782,6 +1833,497 @@ async function handleGameStartedBroadcast(ws, payload) {
     }, null); // Send to everyone
   } catch (error) {
     console.error('❌ Error in handleGameStartedBroadcast:', error);
+  }
+}
+
+// ==================== MONOPOLY HANDLERS ====================
+
+async function handleMonopolyRollDice(ws, payload) {
+  try {
+    const { roomCode, username } = payload;
+    const normalizedCode = roomCode.toUpperCase().trim();
+
+    console.log('🎲 MONOPOLY_ROLL_DICE:', { roomCode: normalizedCode, username });
+
+    const room = await GameRoom.findOne({ roomCode: normalizedCode, isActive: true });
+    if (!room || !room.gameState) {
+      ws.send(JSON.stringify({
+        type: 'ERROR',
+        payload: { message: 'Game not found' }
+      }));
+      return;
+    }
+
+    const result = rollDice(room.gameState, username);
+
+    if (!result.success) {
+      ws.send(JSON.stringify({
+        type: 'ERROR',
+        payload: { message: result.message }
+      }));
+      return;
+    }
+
+    room.gameState = result.gameState;
+    room.markModified('gameState');
+    await room.save();
+
+    broadcastToRoom(normalizedCode, {
+      type: 'MONOPOLY_DICE_ROLLED',
+      payload: {
+        gameState: result.gameState,
+        roll: result.roll,
+        threeDoubles: result.threeDoubles || false
+      }
+    });
+
+    console.log('✅ Dice rolled successfully');
+
+    // Check if current player is a bot and trigger their action
+    const currentPlayer = result.gameState.players.find(p => p.username === result.gameState.currentPlayer);
+    if (currentPlayer && currentPlayer.isBot) {
+      console.log(`🤖 Current player is bot: ${currentPlayer.username}, scheduling action...`);
+
+      const { makeBotDecision } = require('./utils/MonopolyBotAI');
+
+      const getBotDelay = (difficulty) => {
+        switch (difficulty) {
+          case 'easy': return 2000 + Math.random() * 1000;
+          case 'medium': return 1500 + Math.random() * 800;
+          case 'hard': return 1000 + Math.random() * 500;
+          default: return 1500;
+        }
+      };
+
+      const delay = getBotDelay(currentPlayer.difficulty || 'medium');
+
+      setTimeout(async () => {
+        try {
+          console.log(`🤖 Bot ${currentPlayer.username} making decision...`);
+
+          // Reload room to get latest state
+          const latestRoom = await GameRoom.findOne({ roomCode: normalizedCode, isActive: true });
+          if (!latestRoom || !latestRoom.gameState) return;
+
+          const decision = makeBotDecision(latestRoom.gameState, currentPlayer, currentPlayer.difficulty);
+
+          console.log(`🤖 Bot decision:`, decision);
+
+          // Execute bot decision and then ALWAYS end turn
+          if (decision.action === 'buy') {
+            await handleMonopolyBuyProperty(null, {
+              roomCode: normalizedCode,
+              username: currentPlayer.username,
+              spaceId: decision.spaceId
+            });
+            // Wait a bit then end turn
+            setTimeout(async () => {
+              await handleMonopolyEndTurn(null, {
+                roomCode: normalizedCode,
+                username: currentPlayer.username
+              });
+            }, 800);
+          } else if (decision.action === 'build_house') {
+            await handleMonopolyBuildHouse(null, {
+              roomCode: normalizedCode,
+              username: currentPlayer.username,
+              spaceId: decision.spaceId
+            });
+            // Wait a bit then end turn
+            setTimeout(async () => {
+              await handleMonopolyEndTurn(null, {
+                roomCode: normalizedCode,
+                username: currentPlayer.username
+              });
+            }, 800);
+          } else if (decision.action === 'pay_jail') {
+            await handleMonopolyPayJailFee(null, {
+              roomCode: normalizedCode,
+              username: currentPlayer.username
+            });
+            // Wait a bit then end turn
+            setTimeout(async () => {
+              await handleMonopolyEndTurn(null, {
+                roomCode: normalizedCode,
+                username: currentPlayer.username
+              });
+            }, 800);
+          } else if (decision.action === 'use_jail_card') {
+            await handleMonopolyUseJailCard(null, {
+              roomCode: normalizedCode,
+              username: currentPlayer.username
+            });
+            // Wait a bit then end turn
+            setTimeout(async () => {
+              await handleMonopolyEndTurn(null, {
+                roomCode: normalizedCode,
+                username: currentPlayer.username
+              });
+            }, 800);
+          } else if (decision.action === 'skip' || decision.action === 'end_turn') {
+            // End turn immediately
+            setTimeout(async () => {
+              await handleMonopolyEndTurn(null, {
+                roomCode: normalizedCode,
+                username: currentPlayer.username
+              });
+            }, 500);
+          }
+        } catch (error) {
+          console.error(`❌ Error in bot action:`, error);
+          // Even on error, try to end turn to prevent freeze
+          try {
+            await handleMonopolyEndTurn(null, {
+              roomCode: normalizedCode,
+              username: currentPlayer.username
+            });
+          } catch (e) {
+            console.error(`❌ Failed to end turn on error:`, e);
+          }
+        }
+      }, delay);
+    }
+  } catch (error) {
+    console.error('❌ Error in handleMonopolyRollDice:', error);
+    ws.send(JSON.stringify({
+      type: 'ERROR',
+      payload: { message: error.message }
+    }));
+  }
+}
+
+async function handleMonopolyBuyProperty(ws, payload) {
+  try {
+    const { roomCode, username, spaceId } = payload;
+    const normalizedCode = roomCode.toUpperCase().trim();
+
+    console.log('🏠 MONOPOLY_BUY_PROPERTY:', { roomCode: normalizedCode, username, spaceId });
+
+    const room = await GameRoom.findOne({ roomCode: normalizedCode, isActive: true });
+    if (!room || !room.gameState) {
+      ws.send(JSON.stringify({
+        type: 'ERROR',
+        payload: { message: 'Game not found' }
+      }));
+      return;
+    }
+
+    const result = buyProperty(room.gameState, username, spaceId);
+
+    if (!result.success) {
+      ws.send(JSON.stringify({
+        type: 'ERROR',
+        payload: { message: result.message }
+      }));
+      return;
+    }
+
+    room.gameState = result.gameState;
+    room.markModified('gameState');
+    await room.save();
+
+    broadcastToRoom(normalizedCode, {
+      type: 'MONOPOLY_PROPERTY_BOUGHT',
+      payload: { gameState: result.gameState }
+    });
+
+    console.log('✅ Property bought successfully');
+  } catch (error) {
+    console.error('❌ Error in handleMonopolyBuyProperty:', error);
+    ws.send(JSON.stringify({
+      type: 'ERROR',
+      payload: { message: error.message }
+    }));
+  }
+}
+
+async function handleMonopolyBuildHouse(ws, payload) {
+  try {
+    const { roomCode, username, spaceId } = payload;
+    const normalizedCode = roomCode.toUpperCase().trim();
+
+    console.log('🏗️ MONOPOLY_BUILD_HOUSE:', { roomCode: normalizedCode, username, spaceId });
+
+    const room = await GameRoom.findOne({ roomCode: normalizedCode, isActive: true });
+    if (!room || !room.gameState) {
+      ws.send(JSON.stringify({
+        type: 'ERROR',
+        payload: { message: 'Game not found' }
+      }));
+      return;
+    }
+
+    const result = buildHouse(room.gameState, username, spaceId);
+
+    if (!result.success) {
+      ws.send(JSON.stringify({
+        type: 'ERROR',
+        payload: { message: result.message }
+      }));
+      return;
+    }
+
+    room.gameState = result.gameState;
+    room.markModified('gameState');
+    await room.save();
+
+    broadcastToRoom(normalizedCode, {
+      type: 'MONOPOLY_HOUSE_BUILT',
+      payload: { gameState: result.gameState }
+    });
+
+    console.log('✅ House built successfully');
+  } catch (error) {
+    console.error('❌ Error in handleMonopolyBuildHouse:', error);
+    ws.send(JSON.stringify({
+      type: 'ERROR',
+      payload: { message: error.message }
+    }));
+  }
+}
+
+async function handleMonopolyMortgageProperty(ws, payload) {
+  try {
+    const { roomCode, username, spaceId } = payload;
+    const normalizedCode = roomCode.toUpperCase().trim();
+
+    console.log('💵 MONOPOLY_MORTGAGE_PROPERTY:', { roomCode: normalizedCode, username, spaceId });
+
+    const room = await GameRoom.findOne({ roomCode: normalizedCode, isActive: true });
+    if (!room || !room.gameState) {
+      ws.send(JSON.stringify({
+        type: 'ERROR',
+        payload: { message: 'Game not found' }
+      }));
+      return;
+    }
+
+    const result = mortgageProperty(room.gameState, username, spaceId);
+
+    if (!result.success) {
+      ws.send(JSON.stringify({
+        type: 'ERROR',
+        payload: { message: result.message }
+      }));
+      return;
+    }
+
+    room.gameState = result.gameState;
+    room.markModified('gameState');
+    await room.save();
+
+    broadcastToRoom(normalizedCode, {
+      type: 'MONOPOLY_PROPERTY_MORTGAGED',
+      payload: { gameState: result.gameState }
+    });
+
+    console.log('✅ Property mortgaged successfully');
+  } catch (error) {
+    console.error('❌ Error in handleMonopolyMortgageProperty:', error);
+    ws.send(JSON.stringify({
+      type: 'ERROR',
+      payload: { message: error.message }
+    }));
+  }
+}
+
+async function handleMonopolyEndTurn(ws, payload) {
+  try {
+    const { roomCode, username } = payload;
+    const normalizedCode = roomCode.toUpperCase().trim();
+
+    console.log('➡️ MONOPOLY_END_TURN:', { roomCode: normalizedCode, username });
+
+    const room = await GameRoom.findOne({ roomCode: normalizedCode, isActive: true });
+    if (!room || !room.gameState) {
+      ws.send(JSON.stringify({
+        type: 'ERROR',
+        payload: { message: 'Game not found' }
+      }));
+      return;
+    }
+
+    const result = endTurn(room.gameState, username);
+
+    if (!result.success) {
+      ws.send(JSON.stringify({
+        type: 'ERROR',
+        payload: { message: result.message }
+      }));
+      return;
+    }
+
+    room.gameState = result.gameState;
+    room.markModified('gameState');
+    await room.save();
+
+    broadcastToRoom(normalizedCode, {
+      type: 'MONOPOLY_TURN_ENDED',
+      payload: {
+        gameState: result.gameState,
+        rollAgain: result.rollAgain || false
+      }
+    });
+
+    console.log('✅ Turn ended successfully');
+
+    // If rollAgain is true (doubles), and current player is still a bot, trigger another roll
+    if (result.rollAgain) {
+      const currentPlayer = result.gameState.players.find(p => p.username === result.gameState.currentPlayer);
+      if (currentPlayer && currentPlayer.isBot) {
+        console.log(`🤖 Bot ${currentPlayer.username} rolled doubles, scheduling another roll...`);
+
+        const getBotDelay = (difficulty) => {
+          switch (difficulty) {
+            case 'easy': return 1500 + Math.random() * 500;
+            case 'medium': return 1000 + Math.random() * 500;
+            case 'hard': return 800 + Math.random() * 400;
+            default: return 1000;
+          }
+        };
+
+        const delay = getBotDelay(currentPlayer.difficulty || 'medium');
+
+        setTimeout(async () => {
+          try {
+            console.log(`🤖 Bot ${currentPlayer.username} rolling dice again after doubles...`);
+            await handleMonopolyRollDice(null, {
+              roomCode: normalizedCode,
+              username: currentPlayer.username
+            });
+          } catch (error) {
+            console.error(`❌ Error in bot doubles roll:`, error);
+          }
+        }, delay);
+      }
+    }
+
+    // If next player is a bot and it's their turn to roll, trigger dice roll
+    if (!result.rollAgain) {
+      const nextPlayer = result.gameState.players.find(p => p.username === result.gameState.currentPlayer);
+      if (nextPlayer && nextPlayer.isBot && result.gameState.turnPhase === 'roll') {
+        console.log(`🤖 Next player is bot: ${nextPlayer.username}, scheduling dice roll...`);
+
+        const getBotDelay = (difficulty) => {
+          switch (difficulty) {
+            case 'easy': return 2000 + Math.random() * 1000;
+            case 'medium': return 1500 + Math.random() * 800;
+            case 'hard': return 1000 + Math.random() * 500;
+            default: return 1500;
+          }
+        };
+
+        const delay = getBotDelay(nextPlayer.difficulty || 'medium');
+
+        setTimeout(async () => {
+          try {
+            console.log(`🤖 Bot ${nextPlayer.username} rolling dice...`);
+            await handleMonopolyRollDice(null, {
+              roomCode: normalizedCode,
+              username: nextPlayer.username
+            });
+          } catch (error) {
+            console.error(`❌ Error in bot dice roll:`, error);
+          }
+        }, delay);
+      }
+    }
+  } catch (error) {
+    console.error('❌ Error in handleMonopolyEndTurn:', error);
+    ws.send(JSON.stringify({
+      type: 'ERROR',
+      payload: { message: error.message }
+    }));
+  }
+}
+
+async function handleMonopolyUseJailCard(ws, payload) {
+  try {
+    const { roomCode, username } = payload;
+    const normalizedCode = roomCode.toUpperCase().trim();
+
+    console.log('🎫 MONOPOLY_USE_JAIL_CARD:', { roomCode: normalizedCode, username });
+
+    const room = await GameRoom.findOne({ roomCode: normalizedCode, isActive: true });
+    if (!room || !room.gameState) {
+      ws.send(JSON.stringify({
+        type: 'ERROR',
+        payload: { message: 'Game not found' }
+      }));
+      return;
+    }
+
+    const result = useJailCard(room.gameState, username);
+
+    if (!result.success) {
+      ws.send(JSON.stringify({
+        type: 'ERROR',
+        payload: { message: result.message }
+      }));
+      return;
+    }
+
+    room.gameState = result.gameState;
+    room.markModified('gameState');
+    await room.save();
+
+    broadcastToRoom(normalizedCode, {
+      type: 'MONOPOLY_JAIL_CARD_USED',
+      payload: { gameState: result.gameState }
+    });
+
+    console.log('✅ Jail card used successfully');
+  } catch (error) {
+    console.error('❌ Error in handleMonopolyUseJailCard:', error);
+    ws.send(JSON.stringify({
+      type: 'ERROR',
+      payload: { message: error.message }
+    }));
+  }
+}
+
+async function handleMonopolyPayJailFee(ws, payload) {
+  try {
+    const { roomCode, username } = payload;
+    const normalizedCode = roomCode.toUpperCase().trim();
+
+    console.log('💵 MONOPOLY_PAY_JAIL_FEE:', { roomCode: normalizedCode, username });
+
+    const room = await GameRoom.findOne({ roomCode: normalizedCode, isActive: true });
+    if (!room || !room.gameState) {
+      ws.send(JSON.stringify({
+        type: 'ERROR',
+        payload: { message: 'Game not found' }
+      }));
+      return;
+    }
+
+    const result = payJailFee(room.gameState, username);
+
+    if (!result.success) {
+      ws.send(JSON.stringify({
+        type: 'ERROR',
+        payload: { message: result.message }
+      }));
+      return;
+    }
+
+    room.gameState = result.gameState;
+    room.markModified('gameState');
+    await room.save();
+
+    broadcastToRoom(normalizedCode, {
+      type: 'MONOPOLY_JAIL_FEE_PAID',
+      payload: { gameState: result.gameState }
+    });
+
+    console.log('✅ Jail fee paid successfully');
+  } catch (error) {
+    console.error('❌ Error in handleMonopolyPayJailFee:', error);
+    ws.send(JSON.stringify({
+      type: 'ERROR',
+      payload: { message: error.message }
+    }));
   }
 }
 

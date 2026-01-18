@@ -13,7 +13,8 @@ import {
   IoArrowForward,
   IoSunnyOutline,
   IoMoonOutline,
-  IoPeopleSharp
+  IoPeopleSharp,
+  IoBusinessSharp
 } from 'react-icons/io5';
 import { FaIdCard } from 'react-icons/fa6';
 
@@ -282,6 +283,21 @@ export default function Home() {
                 </div>
                 <h3 className={`font-display text-xl md:text-2xl font-black mb-2 ${colors.text}`}>UNO</h3>
                 <p className={`font-body text-xs md:text-sm ${colors.textSecondary}`}>Classic card game!</p>
+              </div>
+            </button>
+
+            {/* Monopoly */}
+            <button
+              onClick={() => handleCreateRoom('monopoly')}
+              disabled={isCreating}
+              className={`group relative overflow-hidden rounded-2xl p-6 md:p-8 transition-all transform hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed shadow-xl border ${colors.border} ${colors.bgSecondary} hover:${colors.surface}`}
+            >
+              <div className="relative z-10 text-center">
+                <div className={`text-5xl md:text-6xl mb-4 mx-auto w-16 h-16 md:w-20 md:h-20 flex items-center justify-center rounded-2xl bg-gradient-to-br from-green-600 to-emerald-700`}>
+                  <IoBusinessSharp className="w-8 h-8 md:w-10 md:h-10 text-white" />
+                </div>
+                <h3 className={`font-display text-xl md:text-2xl font-black mb-2 ${colors.text}`}>Monopoly</h3>
+                <p className={`font-body text-xs md:text-sm ${colors.textSecondary}`}>Classic property trading game!</p>
               </div>
             </button>
           </div>

@@ -45,7 +45,7 @@ const gameRoomSchema = new mongoose.Schema({
   },
   gameType: {
     type: String,
-    enum: ['scribble', 'uno', 'truthordare'], // ADDED truthordare
+    enum: ['scribble', 'uno', 'truthordare', 'monopoly'],
     required: true
   },
   players: [playerSchema],
@@ -61,7 +61,16 @@ const gameRoomSchema = new mongoose.Schema({
   gameState: {
     type: mongoose.Schema.Types.Mixed,
     default: null
-  }
+  },
+  teamMode: {
+    type: Boolean,
+    default: false
+  },
+  teams: [{
+    name: String,
+    color: String,
+    members: [String]
+  }]
 }, {
   timestamps: true
 });

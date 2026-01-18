@@ -4,6 +4,8 @@ import { useTheme } from '../context/ThemeContext';
 import UNOGame from './UNOGame';
 import ScribbleGame from './ScribbleGame';
 import TruthOrDare from './TruthOrDare';
+import MonopolyGame from './MonopolyGame';
+import TeamSelector from './TeamSelector';
 import PixelSnow from './ui/PixelSnow';
 import {
   IoArrowBack,
@@ -13,7 +15,7 @@ import {
   IoCheckmarkCircle
 } from 'react-icons/io5';
 import { FaIdCard, FaCrown, FaUser } from 'react-icons/fa6';
-import { IoBrushSharp } from 'react-icons/io5';
+import { IoBrushSharp, IoBusinessSharp } from 'react-icons/io5';
 import { MdTheaterComedy } from 'react-icons/md';
 
 export default function GameRoom({ roomCode, username, initialRoomData, preSelectedGame, onLeaveRoom }) {
@@ -32,6 +34,10 @@ export default function GameRoom({ roomCode, username, initialRoomData, preSelec
   // Bot configuration state
   const [botCount, setBotCount] = useState(0);
   const [botDifficulty, setBotDifficulty] = useState('medium');
+
+  // Team configuration state (for Monopoly)
+  const [teamMode, setTeamMode] = useState(false);
+  const [teams, setTeams] = useState([]);
 
   // Get players array safely
   const isHost = players[0]?.username === username || room?.host === username;
@@ -210,7 +216,8 @@ export default function GameRoom({ roomCode, username, initialRoomData, preSelec
     const names = {
       'uno': 'UNO',
       'scribble': 'Scribble',
-      'truthordare': 'Truth or Dare'
+      'truthordare': 'Truth or Dare',
+      'monopoly': 'Monopoly'
     };
     return names[type] || type;
   };
@@ -224,6 +231,8 @@ export default function GameRoom({ roomCode, username, initialRoomData, preSelec
         return <IoBrushSharp className="w-12 h-12 md:w-16 md:h-16" />;
       case 'truthordare':
         return <MdTheaterComedy className="w-12 h-12 md:w-16 md:h-16" />;
+      case 'monopoly':
+        return <IoBusinessSharp className="w-12 h-12 md:w-16 md:h-16" />;
       default:
         return <IoGameController className="w-12 h-12 md:w-16 md:h-16" />;
     }
@@ -268,6 +277,16 @@ export default function GameRoom({ roomCode, username, initialRoomData, preSelec
             username={username}
             players={gamePlayers}
             isHost={isHost}
+            initialGameState={initialGameState}
+            onLeaveRoom={handleLeaveGame}
+          />
+        );
+      case 'monopoly':
+        return (
+          <MonopolyGame
+            roomCode={roomCode}
+            username={username}
+            players={gamePlayers}
             initialGameState={initialGameState}
             onLeaveRoom={handleLeaveGame}
           />
@@ -368,6 +387,7 @@ export default function GameRoom({ roomCode, username, initialRoomData, preSelec
               {gameType === 'uno' && 'Classic card game action!'}
               {gameType === 'scribble' && 'Draw and guess!'}
               {gameType === 'truthordare' && 'Truth or Dare party game!'}
+              {gameType === 'monopoly' && 'Buy, trade, and dominate!'}
             </p>
           </div>
         )}
@@ -433,6 +453,45 @@ export default function GameRoom({ roomCode, username, initialRoomData, preSelec
                 </p>
               </div>
             )}
+          </div>
+        )}
+
+        {/* Team Configuration (Monopoly Only) */}
+        {gameType === 'monopoly' && !gameStarted && (
+          <div className="mb-8">
+            <TeamSelector
+              players={players}
+              isHost={isHost}
+              teamMode={teamMode}
+              teams={teams}
+              onTeamModeChange={(enabled) => {
+                setTeamMode(enabled);
+                if (!enabled) {
+                  setTeams([]);
+                }
+              }}
+              onRandomizeTeams={(newTeams) => {
+                setTeams(newTeams);
+              }}
+              onMovePlayer={(username, fromTeam, toTeam) => {
+                const newTeams = [...teams];
+
+                // Remove from old team
+                if (fromTeam >= 0 && newTeams[fromTeam]) {
+                  newTeams[fromTeam].members = newTeams[fromTeam].members.filter(u => u !== username);
+                }
+
+                // Add to new team
+                if (toTeam >= 0 && newTeams[toTeam]) {
+                  if (!newTeams[toTeam].members) {
+                    newTeams[toTeam].members = [];
+                  }
+                  newTeams[toTeam].members.push(username);
+                }
+
+                setTeams(newTeams);
+              }}
+            />
           </div>
         )}
 

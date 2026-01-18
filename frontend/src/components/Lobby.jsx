@@ -12,7 +12,8 @@ import {
   IoGameController,
   IoArrowForward,
   IoAddCircleOutline,
-  IoEnterOutline
+  IoEnterOutline,
+  IoBusinessSharp
 } from 'react-icons/io5';
 import { FaIdCard } from 'react-icons/fa6';
 import { MdTheaterComedy } from 'react-icons/md';
@@ -125,16 +126,16 @@ export default function Lobby({ onRoomJoined, onLogout }) {
               <h2 className={`font-display text-2xl md:text-3xl font-black mb-6 text-center ${colors.text}`}>
                 Select a Game
               </h2>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-6">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
                 {/* Scribble */}
                 <button
                   onClick={() => handleCreateRoom('scribble')}
-                  className={`rounded-xl p-6 hover:scale-105 transition-transform border backdrop-blur-xl ${colors.bgSecondary} ${colors.border} hover:${colors.surface}`}
+                  className={`rounded-xl p-4 md:p-6 hover:scale-105 transition-transform border backdrop-blur-xl ${colors.bgSecondary} ${colors.border} hover:${colors.surface}`}
                 >
-                  <div className={`w-16 h-16 mx-auto mb-4 rounded-2xl flex items-center justify-center ${colors.primaryBg}`}>
-                    <IoBrushSharp className="w-8 h-8 text-white" />
+                  <div className={`w-12 h-12 md:w-16 md:h-16 mx-auto mb-3 md:mb-4 rounded-2xl flex items-center justify-center ${colors.primaryBg}`}>
+                    <IoBrushSharp className="w-6 h-6 md:w-8 md:h-8 text-white" />
                   </div>
-                  <h3 className={`font-display text-xl md:text-2xl font-bold mb-2 ${colors.text}`}>Scribble</h3>
+                  <h3 className={`font-display text-lg md:text-xl lg:text-2xl font-bold mb-1 md:mb-2 ${colors.text}`}>Scribble</h3>
                   <p className={`font-body text-xs md:text-sm ${colors.textSecondary}`}>
                     Draw and guess words with friends!
                   </p>
@@ -143,12 +144,12 @@ export default function Lobby({ onRoomJoined, onLogout }) {
                 {/* UNO */}
                 <button
                   onClick={() => handleCreateRoom('uno')}
-                  className={`rounded-xl p-6 hover:scale-105 transition-transform border backdrop-blur-xl ${colors.bgSecondary} ${colors.border} hover:${colors.surface}`}
+                  className={`rounded-xl p-4 md:p-6 hover:scale-105 transition-transform border backdrop-blur-xl ${colors.bgSecondary} ${colors.border} hover:${colors.surface}`}
                 >
-                  <div className={`w-16 h-16 mx-auto mb-4 rounded-2xl flex items-center justify-center ${colors.secondaryBg}`}>
-                    <FaIdCard className="w-8 h-8 text-white" />
+                  <div className={`w-12 h-12 md:w-16 md:h-16 mx-auto mb-3 md:mb-4 rounded-2xl flex items-center justify-center ${colors.secondaryBg}`}>
+                    <FaIdCard className="w-6 h-6 md:w-8 md:h-8 text-white" />
                   </div>
-                  <h3 className={`font-display text-xl md:text-2xl font-bold mb-2 ${colors.text}`}>UNO</h3>
+                  <h3 className={`font-display text-lg md:text-xl lg:text-2xl font-bold mb-1 md:mb-2 ${colors.text}`}>UNO</h3>
                   <p className={`font-body text-xs md:text-sm ${colors.textSecondary}`}>
                     Classic card game action!
                   </p>
@@ -157,14 +158,28 @@ export default function Lobby({ onRoomJoined, onLogout }) {
                 {/* Truth or Dare */}
                 <button
                   onClick={() => handleCreateRoom('truthordare')}
-                  className={`rounded-xl p-6 hover:scale-105 transition-transform border backdrop-blur-xl ${colors.bgSecondary} ${colors.border} hover:${colors.surface}`}
+                  className={`rounded-xl p-4 md:p-6 hover:scale-105 transition-transform border backdrop-blur-xl ${colors.bgSecondary} ${colors.border} hover:${colors.surface}`}
                 >
-                  <div className={`w-16 h-16 mx-auto mb-4 rounded-2xl flex items-center justify-center ${colors.accentBg}`}>
-                    <MdTheaterComedy className="w-8 h-8 text-white" />
+                  <div className={`w-12 h-12 md:w-16 md:h-16 mx-auto mb-3 md:mb-4 rounded-2xl flex items-center justify-center ${colors.accentBg}`}>
+                    <MdTheaterComedy className="w-6 h-6 md:w-8 md:h-8 text-white" />
                   </div>
-                  <h3 className={`font-display text-xl md:text-2xl font-bold mb-2 ${colors.text}`}>Truth or Dare</h3>
+                  <h3 className={`font-display text-lg md:text-xl lg:text-2xl font-bold mb-1 md:mb-2 ${colors.text}`}>Truth or Dare</h3>
                   <p className={`font-body text-xs md:text-sm ${colors.textSecondary}`}>
                     Test your courage & honesty!
+                  </p>
+                </button>
+
+                {/* Monopoly */}
+                <button
+                  onClick={() => handleCreateRoom('monopoly')}
+                  className={`rounded-xl p-4 md:p-6 hover:scale-105 transition-transform border backdrop-blur-xl ${colors.bgSecondary} ${colors.border} hover:${colors.surface}`}
+                >
+                  <div className="w-12 h-12 md:w-16 md:h-16 mx-auto mb-3 md:mb-4 rounded-2xl flex items-center justify-center bg-gradient-to-br from-green-600 to-emerald-700">
+                    <IoBusinessSharp className="w-6 h-6 md:w-8 md:h-8 text-white" />
+                  </div>
+                  <h3 className={`font-display text-lg md:text-xl lg:text-2xl font-bold mb-1 md:mb-2 ${colors.text}`}>Monopoly</h3>
+                  <p className={`font-body text-xs md:text-sm ${colors.textSecondary}`}>
+                    Buy, trade, and dominate!
                   </p>
                 </button>
               </div>

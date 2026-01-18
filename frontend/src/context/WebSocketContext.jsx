@@ -149,12 +149,19 @@ export const WebSocketProvider = ({ children }) => {
   const sendMessage = useCallback((type, payload) => {
     if (!ws.current || ws.current.readyState !== WebSocket.OPEN) {
       console.error('❌ WebSocket not connected, cannot send:', type);
-      return;
+      // Try to reconnect
+      if (!isConnecting.current && reconnectAttempts.current < maxReconnectAttempts) {
+        console.log('🔄 Attempting to reconnect before sending...');
+        shouldReconnect.current = true;
+        connect();
+      }
+      return false;
     }
 
     const message = { type, payload };
     console.log('📤 Sending message:', type, payload);
     ws.current.send(JSON.stringify(message));
+    return true;
   }, []);
 
   const on = useCallback((event, handler) => {

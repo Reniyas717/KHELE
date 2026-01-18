@@ -8,23 +8,23 @@ const { initializeUNOGame } = require('../controllers/unoGame');
 router.post('/create', async (req, res) => {
   try {
     const { gameType, username } = req.body;
-    
+
     console.log('📝 Create room request:', { gameType, username });
-    
+
     if (!gameType || !username) {
       return res.status(400).json({ error: 'gameType and username are required' });
     }
-    
-    // ADDED truthordare to valid types
-    if (!['scribble', 'uno', 'truthordare'].includes(gameType)) {
-      return res.status(400).json({ error: 'Invalid game type. Must be scribble, uno, or truthordare' });
+
+    // ADDED truthordare and monopoly to valid types
+    if (!['scribble', 'uno', 'truthordare', 'monopoly'].includes(gameType)) {
+      return res.status(400).json({ error: 'Invalid game type. Must be scribble, uno, truthordare, or monopoly' });
     }
-    
+
     // Generate unique 6-character code
     let roomCode;
     let attempts = 0;
     let roomExists = true;
-    
+
     // Try to find a unique room code
     while (roomExists && attempts < 10) {
       roomCode = Math.random().toString(36).substring(2, 8).toUpperCase();
@@ -32,13 +32,13 @@ router.post('/create', async (req, res) => {
       roomExists = !!existing;
       attempts++;
     }
-    
+
     if (roomExists) {
       return res.status(500).json({ error: 'Failed to generate unique room code' });
     }
-    
+
     console.log('🎲 Generated room code:', roomCode);
-    
+
     const room = new GameRoom({
       roomCode,
       host: username,
@@ -56,15 +56,15 @@ router.post('/create', async (req, res) => {
     });
 
     await room.save();
-    console.log('✅ Room created and saved:', { 
-      roomCode, 
-      host: username, 
+    console.log('✅ Room created and saved:', {
+      roomCode,
+      host: username,
       gameType,
-      _id: room._id 
+      _id: room._id
     });
 
-    res.json({ 
-      roomCode, 
+    res.json({
+      roomCode,
       room: {
         roomCode: room.roomCode,
         host: room.host,
@@ -87,30 +87,30 @@ router.post('/create', async (req, res) => {
 router.post('/join', async (req, res) => {
   try {
     const { roomCode, username } = req.body;
-    
+
     console.log('🚪 Join room request:', { roomCode, username });
-    
+
     if (!roomCode || !username) {
       return res.status(400).json({ error: 'roomCode and username are required' });
     }
-    
+
     const normalizedCode = roomCode.toUpperCase().trim();
-    
+
     console.log('🔍 Looking for room:', normalizedCode);
-    
+
     // Find active room
-    const room = await GameRoom.findOne({ 
-      roomCode: normalizedCode, 
-      isActive: true 
+    const room = await GameRoom.findOne({
+      roomCode: normalizedCode,
+      isActive: true
     });
-    
+
     if (!room) {
       console.log('❌ Room not found:', normalizedCode);
-      
+
       // Debug: Show all active rooms
       const allRooms = await GameRoom.find({ isActive: true }).select('roomCode gameType host');
       console.log('📋 Active rooms:', allRooms);
-      
+
       return res.status(404).json({ error: 'Room not found or inactive' });
     }
 
@@ -128,7 +128,7 @@ router.post('/join', async (req, res) => {
 
     // Check if player already in room
     const existingPlayer = room.players.find(p => p.username === username);
-    
+
     if (!existingPlayer) {
       room.players.push({
         username: username,
@@ -143,7 +143,7 @@ router.post('/join', async (req, res) => {
       console.log('♻️ Player already in room:', username);
     }
 
-    res.json({ 
+    res.json({
       room: {
         roomCode: room.roomCode,
         host: room.host,
@@ -166,12 +166,12 @@ router.post('/join', async (req, res) => {
 router.get('/:roomCode', async (req, res) => {
   try {
     const normalizedCode = req.params.roomCode.toUpperCase().trim();
-    
+
     console.log('🔍 Get room request:', normalizedCode);
-    
-    const room = await GameRoom.findOne({ 
+
+    const room = await GameRoom.findOne({
       roomCode: normalizedCode,
-      isActive: true 
+      isActive: true
     });
 
     if (!room) {
@@ -181,7 +181,7 @@ router.get('/:roomCode', async (req, res) => {
 
     console.log('✅ Room details sent:', normalizedCode);
 
-    res.json({ 
+    res.json({
       room: {
         roomCode: room.roomCode,
         host: room.host,
@@ -204,17 +204,17 @@ router.get('/:roomCode', async (req, res) => {
 router.post('/start', async (req, res) => {
   try {
     const { roomCode, username } = req.body;
-    
+
     console.log('🎮 Start game request:', { roomCode, username });
-    
+
     if (!roomCode || !username) {
       return res.status(400).json({ error: 'roomCode and username are required' });
     }
 
     const normalizedCode = roomCode.toUpperCase().trim();
-    const room = await GameRoom.findOne({ 
+    const room = await GameRoom.findOne({
       roomCode: normalizedCode,
-      isActive: true 
+      isActive: true
     });
 
     if (!room) {
@@ -232,7 +232,7 @@ router.post('/start', async (req, res) => {
     console.log('✅ Starting game:', { roomCode: normalizedCode, gameType: room.gameType });
 
     // This will be handled by WebSocket, just validate here
-    res.json({ 
+    res.json({
       message: 'Game start request accepted',
       room: {
         roomCode: room.roomCode,
@@ -255,11 +255,11 @@ router.get('/debug/:roomCode', async (req, res) => {
   try {
     const { roomCode } = req.params;
     const normalizedCode = roomCode.toUpperCase().trim();
-    
+
     console.log('🔧 Debug request for:', normalizedCode);
-    
+
     const room = await GameRoom.findOne({ roomCode: normalizedCode });
-    
+
     if (!room) {
       const allRooms = await GameRoom.find({}).select('roomCode isActive gameType host players');
       return res.json({
@@ -276,8 +276,8 @@ router.get('/debug/:roomCode', async (req, res) => {
       status: room.status,
       isActive: room.isActive,
       playerCount: room.players.length,
-      players: room.players.map(p => ({ 
-        username: p.username, 
+      players: room.players.map(p => ({
+        username: p.username,
         score: p.score,
         cardCount: p.hand?.length || 0
       })),
@@ -311,8 +311,8 @@ router.get('/', async (req, res) => {
       .select('roomCode gameType host players.username status createdAt')
       .sort({ createdAt: -1 })
       .limit(20);
-    
-    res.json({ 
+
+    res.json({
       count: rooms.length,
       rooms: rooms.map(r => ({
         roomCode: r.roomCode,
@@ -334,27 +334,27 @@ router.get('/truthordare/:type', async (req, res) => {
   try {
     const { type } = req.params;
     const { rating } = req.query;
-    
+
     console.log(`🎭 Fetching ${type} question with rating: ${rating}`);
-    
+
     if (!['truth', 'dare'].includes(type)) {
       return res.status(400).json({ error: 'Invalid type. Must be truth or dare' });
     }
-    
+
     const validRating = rating?.toLowerCase() || 'pg';
     const url = `https://api.truthordarebot.xyz/v1/${type}?rating=${validRating}`;
-    
+
     const response = await fetch(url);
-    
+
     if (!response.ok) {
       throw new Error(`API returned ${response.status}`);
     }
-    
+
     const data = await response.json();
     res.json(data);
   } catch (error) {
     console.error('❌ Error fetching from Truth or Dare API:', error);
-    
+
     // Return fallback questions
     const fallbacks = {
       truth: {
@@ -390,13 +390,13 @@ router.get('/truthordare/:type', async (req, res) => {
         ]
       }
     };
-    
+
     const type = req.params.type;
     const rating = req.query.rating?.toLowerCase() || 'pg';
     const questions = fallbacks[type][rating === 'r' ? 'r' : 'pg'];
     const randomQuestion = questions[Math.floor(Math.random() * questions.length)];
-    
-    res.json({ 
+
+    res.json({
       question: randomQuestion,
       type: type.toUpperCase(),
       rating: rating.toUpperCase()
