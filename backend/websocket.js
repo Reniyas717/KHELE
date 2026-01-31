@@ -1093,252 +1093,111 @@ async function handlePlayCard(ws, payload) {
     const room = await GameRoom.findOne({ roomCode: normalizedCode, isActive: true });
 
     if (!room || !room.gameState) {
-      ws.send(JSON.stringify({
-        type: 'ERROR',
-        payload: { message: 'Game not found' }
-      }));
+      if (ws) {
+        ws.send(JSON.stringify({
+          type: 'ERROR',
+          payload: { message: 'Game not found' }
+        }));
+      }
       return;
     }
 
     const gameState = room.gameState;
 
-    // CRITICAL: Prevent finished players from playing
-    if (gameState.finishedPlayers && gameState.finishedPlayers.includes(username)) {
-      console.log(`⛔ ${username} has already finished - blocking play attempt`);
-      if (ws) {
-        ws.send(JSON.stringify({
-          type: 'PLAYER_ALREADY_FINISHED',
-          payload: { message: 'You have already finished this game' }
-        }));
-      }
-      return;
-    }
-
-    // Check if it's player's turn
-    if (gameState.currentPlayer !== username) {
-      if (ws) {
-        ws.send(JSON.stringify({
-          type: 'ERROR',
-          payload: { message: `Not your turn. Current player: ${gameState.currentPlayer}` }
-        }));
-      }
-      return;
-    }
-
     // Get the card from player's hand
     const hand = gameState.hands[username];
     if (!hand || cardIndex < 0 || cardIndex >= hand.length) {
-      ws.send(JSON.stringify({
-        type: 'ERROR',
-        payload: { message: 'Invalid card index' }
-      }));
+      if (ws) {
+        ws.send(JSON.stringify({
+          type: 'ERROR',
+          payload: { message: 'Invalid card index' }
+        }));
+      }
       return;
     }
 
     const card = hand[cardIndex];
     console.log('🎴 Playing card:', card);
 
-    // Check if card can be played
-    const currentCard = gameState.discardPile[gameState.discardPile.length - 1];
-    const currentColor = gameState.currentColor;
+    // Use controller function to play card
+    const result = playCard(gameState, username, card.id, chosenColor);
 
-    const canPlay =
-      card.color === 'wild' ||
-      card.color === currentColor ||
-      card.value === currentCard.value;
+    if (!result.success) {
+      console.log('❌ Play card failed:', result.message);
+      if (ws) {
+        ws.send(JSON.stringify({
+          type: 'ERROR',
+          payload: { message: result.message }
+        }));
+      }
 
-    if (!canPlay) {
-      ws.send(JSON.stringify({
-        type: 'ERROR',
-        payload: { message: 'Cannot play this card' }
-      }));
-      return;
-    }
+      // If forced draw occurred, save and broadcast
+      if (result.forcedDraw) {
+        room.gameState = result.gameState;
+        room.markModified('gameState');
+        await room.save();
 
-    // Remove card from hand
-    hand.splice(cardIndex, 1);
-
-    // Add card to discard pile
-    gameState.discardPile.push(card);
-
-    // Update current color
-    if (card.color === 'wild') {
-      gameState.currentColor = chosenColor || 'red';
-    } else {
-      gameState.currentColor = card.color;
-    }
-    gameState.currentValue = card.value;
-
-    // Update player's card count
-    const playerState = gameState.players.find(p => p.username === username);
-    if (playerState) {
-      playerState.cardCount = hand.length;
-    }
-
-    // Check if player finished (no cards left)
-    if (hand.length === 0) {
-      console.log(`🏁 Player ${username} finished!`);
-
-      // Add to rankings
-      const position = gameState.rankings.length + 1;
-      gameState.rankings.push({
-        username,
-        position,
-        finishTime: Date.now()
-      });
-
-      // Mark as finished
-      gameState.finishedPlayers.push(username);
-      gameState.activePlayers--;
-
-      console.log(`📊 Rankings: ${JSON.stringify(gameState.rankings)}`);
-      console.log(`👥 Active players remaining: ${gameState.activePlayers}`);
-
-      // Broadcast player finished
-      const frontendGameState = convertToFrontendGameState(gameState);
-      broadcastToRoom(normalizedCode, {
-        type: 'PLAYER_FINISHED',
-        payload: {
-          player: username,
-          position,
-          rankings: gameState.rankings,
-          activePlayers: gameState.activePlayers,
-          gameState: frontendGameState
-        }
-      });
-
-      // Check if game is over (only 1 player remains)
-      if (gameState.activePlayers === 1) {
-        console.log(`🎮 Game Over! Only 1 player remains`);
-
-        // Find last remaining player
-        const lastPlayer = gameState.players.find(p =>
-          !gameState.finishedPlayers.includes(p.username)
-        );
-
-        if (lastPlayer) {
-          // Add last player to rankings
-          gameState.rankings.push({
-            username: lastPlayer.username,
-            position: gameState.rankings.length + 1,
-            finishTime: Date.now()
-          });
-        }
-
-        gameState.gameOver = true;
-        gameState.winner = gameState.rankings[0].username; // First place
-
-        // Broadcast game over with full rankings
+        const frontendGameState = convertToFrontendGameState(result.gameState);
         broadcastToRoom(normalizedCode, {
-          type: 'GAME_OVER',
+          type: 'FORCED_DRAW',
           payload: {
-            winner: gameState.winner,
-            rankings: gameState.rankings,
+            player: username,
+            drawnCards: result.drawnCards,
             gameState: frontendGameState
           }
         });
 
-        room.gameState = gameState;
-        room.markModified('gameState');
-        await room.save();
-        return;
+        // Check if next player is bot
+        await triggerBotTurnIfNeeded(normalizedCode, result.gameState);
       }
 
-      // Game continues - save state and continue
-      room.gameState = gameState;
-      room.markModified('gameState');
-      await room.save();
-
-      // Don't return - continue to next player
-    }
-
-    // Handle action cards
-    let skipNext = false;
-    let drawAmount = 0;
-
-    if (card.value === 'skip') {
-      skipNext = true;
-    } else if (card.value === 'reverse') {
-      gameState.direction *= -1;
-      if (gameState.players.length === 2) {
-        skipNext = true;
-      }
-    } else if (card.value === 'draw2') {
-      drawAmount = 2;
-      skipNext = true;
-    } else if (card.value === 'wild_draw4') {
-      drawAmount = 4;
-      skipNext = true;
-    }
-
-    // Calculate next player (skip finished players)
-    let nextIndex = (gameState.currentPlayerIndex + gameState.direction + gameState.players.length) % gameState.players.length;
-
-    // Skip finished players for the purpose of determining who receives draw cards
-    let attempts = 0;
-    while (gameState.finishedPlayers.includes(gameState.players[nextIndex].username) && attempts < gameState.players.length) {
-      console.log(`⏭️ Skipping finished player for draw card recipient: ${gameState.players[nextIndex].username}`);
-      nextIndex = (nextIndex + gameState.direction + gameState.players.length) % gameState.players.length;
-      attempts++;
-    }
-
-    if (attempts >= gameState.players.length) {
-      console.error('❌ All players finished - this should not happen when determining draw recipient');
       return;
     }
 
-    // Handle draw cards (give to this determined NEXT player)
-    if (drawAmount > 0) {
-      const nextPlayer = gameState.players[nextIndex].username;
-      console.log(`📤 Giving ${drawAmount} cards to NEXT player: ${nextPlayer}`);
-
-      for (let i = 0; i < drawAmount; i++) {
-        if (gameState.deck.length === 0) {
-          // Reshuffle discard pile
-          const topCard = gameState.discardPile.pop();
-          gameState.deck = shuffleDeck(gameState.discardPile);
-          gameState.discardPile = [topCard];
-        }
-        if (gameState.deck.length > 0) {
-          gameState.hands[nextPlayer].push(gameState.deck.pop());
-        }
-      }
-      gameState.players.find(p => p.username === nextPlayer).cardCount = gameState.hands[nextPlayer].length;
-      console.log(`📤 ${nextPlayer} drew ${drawAmount} cards`);
-    }
-
-    // Skip next player if needed (for skip/reverse cards)
-    if (skipNext) {
-      console.log(`⏭️ Skipping next player due to skip/reverse`);
-      nextIndex = (nextIndex + gameState.direction + gameState.players.length) % gameState.players.length;
-    }
-
-    // CRITICAL: Skip finished players when setting current player
-    let skipAttempts = 0;
-    while (gameState.finishedPlayers && gameState.finishedPlayers.includes(gameState.players[nextIndex].username) && skipAttempts < gameState.players.length) {
-      console.log(`⏭️ Skipping finished player: ${gameState.players[nextIndex].username}`);
-      nextIndex = (nextIndex + gameState.direction + gameState.players.length) % gameState.players.length;
-      skipAttempts++;
-    }
-
-    if (skipAttempts >= gameState.players.length) {
-      console.error('❌ All players finished - game should have ended');
-      return;
-    }
-
-    gameState.currentPlayerIndex = nextIndex;
-    gameState.currentPlayer = gameState.players[nextIndex].username;
-
-    console.log(`➡️ Next player: ${gameState.currentPlayer}`);
-
-    // Save game state
-    room.gameState = gameState;
+    // Success - save game state
+    room.gameState = result.gameState;
     room.markModified('gameState');
     await room.save();
 
-    // Convert to frontend format and broadcast
-    const frontendGameState = convertToFrontendGameState(gameState);
+    // Convert to frontend format
+    const frontendGameState = convertToFrontendGameState(result.gameState);
 
+    // Check if player finished
+    if (result.playerFinished) {
+      console.log(`🏆 Player ${username} finished!`);
+
+      const playerState = result.gameState.players.find(p => p.username === username);
+
+      broadcastToRoom(normalizedCode, {
+        type: 'PLAYER_FINISHED',
+        payload: {
+          player: username,
+          position: playerState?.finishPosition,
+          points: playerState?.points,
+          rankings: result.gameState.finishedPlayers,
+          activePlayers: result.gameState.activePlayers,
+          gameState: frontendGameState
+        }
+      });
+
+      // Check if game over
+      if (result.gameOver) {
+        console.log(`🎮 Game Over! Winner: ${result.gameState.winner}`);
+
+        broadcastToRoom(normalizedCode, {
+          type: 'GAME_OVER',
+          payload: {
+            winner: result.gameState.winner,
+            rankings: result.gameState.finishedPlayers,
+            gameState: frontendGameState
+          }
+        });
+
+        return;
+      }
+    }
+
+    // Broadcast card played
     console.log('📢 Broadcasting CARD_PLAYED');
     broadcastToRoom(normalizedCode, {
       type: 'CARD_PLAYED',
@@ -1350,122 +1209,103 @@ async function handlePlayCard(ws, payload) {
     });
 
     // Check if next player is a bot and trigger their turn
-    const nextPlayer = gameState.players[nextIndex];
-
-    console.log('═══════════════════════════════════════');
-    console.log('🔍 BOT TURN CHECK AFTER CARD PLAYED');
-    console.log('═══════════════════════════════════════');
-    console.log('Next player index:', nextIndex);
-    console.log('Next player object:', JSON.stringify(nextPlayer, null, 2));
-    console.log('All players:', gameState.players.map(p => ({
-      username: p.username,
-      isBot: p.isBot,
-      difficulty: p.difficulty
-    })));
-    console.log('Is next player a bot?', nextPlayer?.isBot === true);
-    console.log('═══════════════════════════════════════');
-
-    if (nextPlayer && nextPlayer.isBot === true) {
-      console.log(`🤖 ✅ CONFIRMED: Next player is bot: ${nextPlayer.username} (${nextPlayer.difficulty})`);
-      console.log(`🤖 Scheduling bot turn in ${1500}ms...`);
-
-      // Import bot AI
-      const { makeBotDecision } = require('./utils/UNOBotAI');
-
-      // Get bot delay based on difficulty
-      const getBotDelay = (difficulty) => {
-        switch (difficulty) {
-          case 'easy': return 2000 + Math.random() * 2000;
-          case 'medium': return 1000 + Math.random() * 1500;
-          case 'hard': return 500 + Math.random() * 1000;
-          default: return 1500;
-        }
-      };
-
-      const delay = getBotDelay(nextPlayer.difficulty || 'medium');
-      console.log(`🤖 Calculated delay: ${delay}ms`);
-
-      // Schedule bot action
-      setTimeout(async () => {
-        try {
-          console.log(`🤖 ⏰ TIMEOUT TRIGGERED for bot ${nextPlayer.username}`);
-          console.log(`🤖 Fetching fresh game state...`);
-
-          // Fetch fresh game state
-          const freshRoom = await GameRoom.findOne({ roomCode: normalizedCode, isActive: true });
-          if (!freshRoom || !freshRoom.gameState) {
-            console.error('❌ Room or game state not found');
-            return;
-          }
-
-          const freshGameState = freshRoom.gameState;
-          console.log(`🤖 Current player in fresh state: ${freshGameState.currentPlayer}`);
-
-          // Verify it's still bot's turn
-          if (freshGameState.currentPlayer !== nextPlayer.username) {
-            console.log(`⚠️ Not bot's turn anymore. Current: ${freshGameState.currentPlayer}`);
-            return;
-          }
-
-          console.log(`🤖 Bot ${nextPlayer.username} is taking turn...`);
-
-          // Get bot's hand
-          const botHand = freshGameState.hands[nextPlayer.username];
-          console.log(`🤖 Bot hand size: ${botHand?.length || 0}`);
-
-          if (!botHand || botHand.length === 0) {
-            console.error('❌ Bot has no cards!');
-            return;
-          }
-
-          // Make decision
-          console.log(`🤖 Calling bot AI decision maker...`);
-          const decision = makeBotDecision(botHand, freshGameState, nextPlayer.difficulty);
-          console.log(`🤖 Bot decision:`, decision);
-
-          if (decision.action === 'play') {
-            console.log(`🤖 ▶️ Bot ${nextPlayer.username} PLAYING card index ${decision.cardIndex}`);
-
-            // Trigger play card (call handlePlayCard recursively)
-            await handlePlayCard(null, {
-              roomCode: normalizedCode,
-              username: nextPlayer.username,
-              cardIndex: decision.cardIndex,
-              chosenColor: decision.chosenColor
-            });
-            console.log(`🤖 ✅ Bot play card completed`);
-          } else {
-            console.log(`🤖 📥 Bot ${nextPlayer.username} DRAWING card`);
-
-            // Trigger draw card
-            await handleDrawCardAction(null, {
-              roomCode: normalizedCode,
-              username: nextPlayer.username
-            });
-            console.log(`🤖 ✅ Bot draw card completed`);
-          }
-        } catch (error) {
-          console.error(`❌ Error in bot ${nextPlayer.username} action:`, error);
-          console.error('Error stack:', error.stack);
-        }
-      }, delay);
-
-      console.log(`🤖 Bot turn scheduled successfully`);
-    } else {
-      console.log(`👤 Next player is human or not found`);
-    }
-    console.log('═══════════════════════════════════════\n');
-
+    await triggerBotTurnIfNeeded(normalizedCode, result.gameState);
 
   } catch (error) {
     console.error('❌ Error in handlePlayCard:', error);
+    console.error('Error stack:', error.stack);
     if (ws) {
       ws.send(JSON.stringify({
         type: 'ERROR',
-        payload: { message: 'Failed to play card' }
+        payload: { message: 'Failed to play card: ' + error.message }
       }));
     }
   }
+}
+
+// Helper function to trigger bot turns
+async function triggerBotTurnIfNeeded(roomCode, gameState) {
+  const currentPlayer = gameState.players.find(p => p.username === gameState.currentPlayer);
+
+  if (!currentPlayer || !currentPlayer.isBot) {
+    return;
+  }
+
+  console.log(`🤖 Next player is bot: ${currentPlayer.username} (${currentPlayer.difficulty})`);
+
+  const { makeBotDecision } = require('./utils/UNOBotAI');
+
+  const getBotDelay = (difficulty) => {
+    switch (difficulty) {
+      case 'easy': return 2000 + Math.random() * 2000;
+      case 'medium': return 1000 + Math.random() * 1500;
+      case 'hard': return 500 + Math.random() * 1000;
+      default: return 1500;
+    }
+  };
+
+  const delay = getBotDelay(currentPlayer.difficulty || 'medium');
+  console.log(`🤖 Scheduling bot turn in ${delay}ms...`);
+
+  setTimeout(async () => {
+    try {
+      console.log(`🤖 Bot ${currentPlayer.username} taking turn...`);
+
+      // Fetch fresh game state
+      const freshRoom = await GameRoom.findOne({ roomCode: roomCode.toUpperCase().trim(), isActive: true });
+      if (!freshRoom || !freshRoom.gameState) {
+        console.error('❌ Room or game state not found');
+        return;
+      }
+
+      const freshGameState = freshRoom.gameState;
+
+      // Verify it's still bot's turn
+      if (freshGameState.currentPlayer !== currentPlayer.username) {
+        console.log(`⚠️ Not bot's turn anymore. Current: ${freshGameState.currentPlayer}`);
+        return;
+      }
+
+      // Check if bot is finished
+      const botPlayer = freshGameState.players.find(p => p.username === currentPlayer.username);
+      if (botPlayer && botPlayer.isFinished) {
+        console.log(`⚠️ Bot ${currentPlayer.username} has already finished`);
+        return;
+      }
+
+      // Get bot's hand
+      const botHand = freshGameState.hands[currentPlayer.username];
+      if (!botHand || botHand.length === 0) {
+        console.error('❌ Bot has no cards!');
+        return;
+      }
+
+      // Make decision
+      const decision = makeBotDecision(botHand, freshGameState, currentPlayer.difficulty);
+      console.log(`🤖 Bot decision:`, decision);
+
+      if (decision.action === 'play') {
+        console.log(`🤖 Bot ${currentPlayer.username} playing card index ${decision.cardIndex}`);
+        await handlePlayCard(null, {
+          roomCode: roomCode,
+          username: currentPlayer.username,
+          cardIndex: decision.cardIndex,
+          chosenColor: decision.chosenColor
+        });
+      } else {
+        console.log(`🤖 Bot ${currentPlayer.username} drawing card`);
+        await handleDrawCardAction(null, {
+          roomCode: roomCode,
+          username: currentPlayer.username
+        });
+      }
+    } catch (error) {
+      console.error(`❌ Error in bot ${currentPlayer.username} action:`, error);
+      console.error('Error stack:', error.stack);
+    }
+  }, delay);
+  console.log(`🤖 Bot turn scheduled successfully`);
+  console.log('═══════════════════════════════════════\n');
 }
 
 async function handleDrawCardAction(ws, payload) {
@@ -1477,65 +1317,61 @@ async function handleDrawCardAction(ws, payload) {
     const room = await GameRoom.findOne({ roomCode: normalizedCode, isActive: true });
 
     if (!room || !room.gameState) {
-      ws.send(JSON.stringify({
-        type: 'ERROR',
-        payload: { message: 'Game not found' }
-      }));
+      if (ws) {
+        ws.send(JSON.stringify({
+          type: 'ERROR',
+          payload: { message: 'Game not found' }
+        }));
+      }
       return;
     }
 
     const gameState = room.gameState;
 
-    // Check if it's player's turn
-    if (gameState.currentPlayer !== username) {
-      ws.send(JSON.stringify({
-        type: 'ERROR',
-        payload: { message: `Not your turn. Current player: ${gameState.currentPlayer}` }
-      }));
+    // Use controller function to draw card
+    const result = drawCard(gameState, username);
+
+    if (!result.success) {
+      console.log('❌ Draw card failed:', result.message);
+      if (ws) {
+        ws.send(JSON.stringify({
+          type: 'ERROR',
+          payload: { message: result.message }
+        }));
+      }
+
+      // If forced draw occurred, save and broadcast
+      if (result.forcedDraw) {
+        room.gameState = result.gameState;
+        room.markModified('gameState');
+        await room.save();
+
+        const frontendGameState = convertToFrontendGameState(result.gameState);
+        broadcastToRoom(normalizedCode, {
+          type: 'FORCED_DRAW',
+          payload: {
+            player: username,
+            drawnCards: result.drawnCards,
+            gameState: frontendGameState
+          }
+        });
+
+        // Check if next player is bot
+        await triggerBotTurnIfNeeded(normalizedCode, result.gameState);
+      }
+
       return;
     }
 
-    // Reshuffle if deck is empty
-    if (gameState.deck.length === 0) {
-      const topCard = gameState.discardPile.pop();
-      gameState.deck = shuffleDeck(gameState.discardPile);
-      gameState.discardPile = [topCard];
-      console.log('🔄 Reshuffled discard pile into deck');
-    }
-
-    if (gameState.deck.length === 0) {
-      ws.send(JSON.stringify({
-        type: 'ERROR',
-        payload: { message: 'No cards left in deck' }
-      }));
-      return;
-    }
-
-    // Draw card
-    const card = gameState.deck.pop();
-    gameState.hands[username].push(card);
-
-    // Update card count
-    const playerState = gameState.players.find(p => p.username === username);
-    if (playerState) {
-      playerState.cardCount = gameState.hands[username].length;
-      playerState.hasCalledUno = false;
-    }
-
-    // Move to next player
-    const nextIndex = (gameState.currentPlayerIndex + gameState.direction + gameState.players.length) % gameState.players.length;
-    gameState.currentPlayerIndex = nextIndex;
-    gameState.currentPlayer = gameState.players[nextIndex].username;
-
-    // Save game state
-    room.gameState = gameState;
+    // Success - save game state
+    room.gameState = result.gameState;
     room.markModified('gameState');
     await room.save();
 
     // Convert to frontend format
-    const frontendGameState = convertToFrontendGameState(gameState);
+    const frontendGameState = convertToFrontendGameState(result.gameState);
 
-    console.log(`✅ ${username} drew a card, next player: ${gameState.currentPlayer}`);
+    console.log(`✅ ${username} drew a card, next player: ${result.gameState.currentPlayer}`);
 
     // Broadcast to all players
     broadcastToRoom(normalizedCode, {
@@ -1547,58 +1383,16 @@ async function handleDrawCardAction(ws, payload) {
     });
 
     // Check if next player is a bot and trigger their turn
-    const nextPlayer = gameState.players[nextIndex];
-    if (nextPlayer && nextPlayer.isBot) {
-      console.log(`🤖 Next player is bot after draw: ${nextPlayer.username}`);
-
-      const { makeBotDecision } = require('./utils/UNOBotAI');
-
-      const getBotDelay = (difficulty) => {
-        switch (difficulty) {
-          case 'easy': return 2000 + Math.random() * 2000;
-          case 'medium': return 1000 + Math.random() * 1500;
-          case 'hard': return 500 + Math.random() * 1000;
-          default: return 1500;
-        }
-      };
-
-      const delay = getBotDelay(nextPlayer.difficulty || 'medium');
-
-      setTimeout(async () => {
-        try {
-          console.log(`🤖 Bot ${nextPlayer.username} is taking turn after draw...`);
-
-          const botHand = gameState.hands[nextPlayer.username];
-          const decision = makeBotDecision(botHand, gameState, nextPlayer.difficulty);
-
-          if (decision.action === 'play') {
-            console.log(`🤖 Bot ${nextPlayer.username} playing card`);
-            await handlePlayCard(null, {
-              roomCode: normalizedCode,
-              username: nextPlayer.username,
-              cardIndex: decision.cardIndex,
-              chosenColor: decision.chosenColor
-            });
-          } else {
-            console.log(`🤖 Bot ${nextPlayer.username} drawing card`);
-            await handleDrawCardAction(null, {
-              roomCode: normalizedCode,
-              username: nextPlayer.username
-            });
-          }
-        } catch (error) {
-          console.error(`❌ Error in bot ${nextPlayer.username} action after draw:`, error);
-        }
-      }, delay);
-    }
-
+    await triggerBotTurnIfNeeded(normalizedCode, result.gameState);
 
   } catch (error) {
     console.error('❌ Error in handleDrawCard:', error);
-    ws.send(JSON.stringify({
-      type: 'ERROR',
-      payload: { message: 'Failed to draw card' }
-    }));
+    if (ws) {
+      ws.send(JSON.stringify({
+        type: 'ERROR',
+        payload: { message: 'Failed to draw card' }
+      }));
+    }
   }
 }
 
